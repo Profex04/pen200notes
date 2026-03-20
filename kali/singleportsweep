@@ -1,0 +1,13 @@
+$target = "10.10.131.152"
+
+$port = 8443
+try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $async = $client.BeginConnect($target, $port, $null, $null)
+        $wait = $async.AsyncWaitHandle.WaitOne(2000)   # timeout in ms
+        if ($wait -and $client.Connected) {
+            Write-Host "OPEN: $port"
+            $client.Close()
+        }
+} catch {}
+

